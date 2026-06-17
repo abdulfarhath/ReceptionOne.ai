@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>receptionone.ai — Reception that never sleeps</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Hanken+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#F1F5F3;
+    --cloud:#FFFFFF;
+    --ink:#0B2722;
+    --ink-soft:#3C544F;
+    --teal:#0E7C6B;
+    --teal-deep:#0A4339;
+    --teal-deeper:#062B24;
+    --mint:#D6ECE4;
+    --mint-line:#BBDDD2;
+    --amber:#EDA23B;
+    --amber-soft:#F8E7CD;
+    --shadow:0 1px 2px rgba(11,39,34,.04), 0 12px 32px -12px rgba(11,39,34,.16);
+
+    --display:'Bricolage Grotesque','Hanken Grotesk',system-ui,sans-serif;
+    --body:'Hanken Grotesk',system-ui,-apple-system,'Segoe UI',sans-serif;
+    --mono:'JetBrains Mono',ui-monospace,'SF Mono',Menlo,monospace;
+  }
+
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    font-family:var(--body);
+    background:var(--paper);
+    color:var(--ink);
+    line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+    overflow-x:hidden;
+  }
+  a{color:inherit}
+  ::selection{background:var(--amber);color:var(--teal-deeper)}
+
+  .wrap{max-width:1080px;margin-inline:auto;padding-inline:24px}
+  .sec{padding:clamp(60px,9vw,118px) 0}
+  .sec--dark{background:var(--teal-deeper);color:#E8F4EF}
+  .sec--ink{background:var(--ink);color:#E8F4EF}
+
+  .eyebrow{
+    font-family:var(--mono);
+    font-size:.72rem;font-weight:700;
+    letter-spacing:.18em;text-transform:uppercase;
+    color:var(--teal);
+    display:inline-flex;align-items:center;gap:.6em;
+  }
+  .eyebrow::before{content:"";width:26px;height:1.5px;background:var(--amber)}
+  .sec--dark .eyebrow,.sec--ink .eyebrow{color:var(--amber)}
+  .sec--dark .eyebrow::before,.sec--ink .eyebrow::before{background:var(--amber)}
+
+  h1,h2,h3{font-family:var(--display);font-weight:800;line-height:1.04;letter-spacing:-.02em}
+  h2{font-size:clamp(1.95rem,4.2vw,2.9rem);margin-top:.5rem}
+  .lede{font-size:clamp(1.05rem,1.6vw,1.22rem);color:var(--ink-soft);max-width:54ch;margin-top:1.1rem}
+  .sec--dark .lede,.sec--ink .lede{color:#AFD2C8}
+
+  /* ---------- HERO ---------- */
+  .hero{
+    background:
+      radial-gradient(1100px 520px at 82% -8%, rgba(237,162,59,.20), transparent 60%),
+      radial-gradient(900px 600px at 8% 110%, rgba(14,124,107,.45), transparent 55%),
+      linear-gradient(160deg,var(--teal-deeper),var(--teal-deep));
+    color:#EAF6F1;position:relative;overflow:hidden;
+  }
+  .hero .wrap{padding-top:clamp(54px,8vw,92px);padding-bottom:clamp(54px,8vw,92px)}
+  .hero-grid{display:grid;grid-template-columns:1.05fr .95fr;gap:clamp(32px,5vw,72px);align-items:center}
+  .brandmark{font-family:var(--mono);font-weight:700;letter-spacing:.02em;font-size:.95rem;color:#CFE9DF;display:flex;align-items:center;gap:.5em;margin-bottom:clamp(28px,5vw,52px)}
+  .brand-dot{width:9px;height:9px;border-radius:50%;background:var(--amber);box-shadow:0 0 0 4px rgba(237,162,59,.22)}
+  .hero h1{font-size:clamp(2.7rem,6.2vw,4.5rem);color:#fff}
+  .hero h1 em{font-style:normal;color:var(--amber)}
+  .hero .lede{color:#C6E3D9;max-width:46ch}
+  .hero-cta{display:flex;flex-wrap:wrap;gap:14px;margin-top:2rem}
+  .trustrow{display:flex;flex-wrap:wrap;gap:10px;margin-top:2.4rem}
+  .trustrow .chip{border-color:rgba(255,255,255,.22);color:#D8EDE6;background:rgba(255,255,255,.05)}
+
+  .btn{font-family:var(--body);font-weight:600;font-size:1rem;padding:.82em 1.4em;border-radius:999px;border:1.5px solid transparent;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:.5em;transition:transform .18s ease,background .18s ease,border-color .18s ease}
+  .btn-primary{background:var(--amber);color:#3a2606}
+  .btn-primary:hover{transform:translateY(-2px);background:#f3b358}
+  .btn-ghost{background:transparent;color:#EAF6F1;border-color:rgba(255,255,255,.3)}
+  .btn-ghost:hover{border-color:#fff;transform:translateY(-2px)}
+  .btn-dark{background:var(--teal);color:#fff}
+  .btn-dark:hover{transform:translateY(-2px);background:#11917e}
+
+  .chip{font-family:var(--mono);font-size:.74rem;font-weight:500;letter-spacing:.01em;padding:.5em .85em;border-radius:999px;border:1.4px solid var(--mint-line);color:var(--teal-deep);background:var(--cloud);white-space:nowrap}
+
+  /* ---------- CHAT MOCK (signature) ---------- */
+  .phone{
+    background:rgba(255,255,255,.06);
+    border:1px solid rgba(255,255,255,.14);
+    border-radius:26px;padding:18px;
+    backdrop-filter:blur(2px);
+    box-shadow:0 30px 60px -24px rgba(0,0,0,.5);
+  }
+  .phone-top{display:flex;align-items:center;gap:10px;padding:4px 6px 14px;border-bottom:1px solid rgba(255,255,255,.1);margin-bottom:14px}
+  .avatar{width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,var(--amber),#d98a1f);display:grid;place-items:center;font-family:var(--display);font-weight:800;color:#3a2606;font-size:.95rem}
+  .phone-top b{font-family:var(--body);font-weight:600;font-size:.92rem;color:#fff}
+  .phone-top span{font-family:var(--mono);font-size:.66rem;color:#9FD0C3;display:block;margin-top:1px}
+  .thread{display:flex;flex-direction:column;gap:9px}
+  .bubble{max-width:84%;padding:.62em .9em;border-radius:16px;font-size:.9rem;line-height:1.4;opacity:0;transform:translateY(8px)}
+  .anim .bubble{animation:rise .5s cubic-bezier(.2,.7,.3,1) forwards}
+  .anim .bubble:nth-child(1){animation-delay:.15s}
+  .anim .bubble:nth-child(2){animation-delay:.55s}
+  .anim .bubble:nth-child(3){animation-delay:.95s}
+  .anim .bubble:nth-child(4){animation-delay:1.45s}
+  .anim .bubble:nth-child(5){animation-delay:1.95s}
+  .bub-clinic{align-self:flex-start;background:rgba(255,255,255,.12);color:#EAF6F1;border-bottom-left-radius:5px}
+  .bub-patient{align-self:flex-end;background:var(--mint);color:#0B2722;border-bottom-right-radius:5px}
+  .slotrow{display:flex;gap:7px;flex-wrap:wrap;margin-top:3px}
+  .slot{font-family:var(--mono);font-size:.74rem;font-weight:700;padding:.42em .7em;border-radius:9px;background:rgba(237,162,59,.16);color:var(--amber);border:1px solid rgba(237,162,59,.4)}
+  .slot.is-picked{background:var(--amber);color:#3a2606}
+  .confirm{align-self:flex-start;background:rgba(14,124,107,.34);border:1px solid rgba(124,224,200,.4);color:#DFF6EE;border-bottom-left-radius:5px;font-weight:600}
+  @keyframes rise{to{opacity:1;transform:none}}
+
+  /* ---------- PROBLEM ---------- */
+  .cost-list{list-style:none;margin-top:2.2rem;display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .cost-list li{background:var(--cloud);border:1px solid var(--mint-line);border-left:3px solid var(--amber);border-radius:12px;padding:1.05em 1.15em;box-shadow:var(--shadow)}
+  .cost-list b{font-family:var(--display);font-weight:700;display:block;font-size:1.02rem;letter-spacing:-.01em}
+  .cost-list small{color:var(--ink-soft);font-size:.92rem}
+
+  /* ---------- PILLARS ---------- */
+  .pillars{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-top:2.6rem}
+  .pillar{background:var(--cloud);border:1px solid var(--mint-line);border-radius:18px;padding:1.6em 1.5em;box-shadow:var(--shadow);position:relative}
+  .pillar . p-no{font-family:var(--mono);font-size:.72rem;font-weight:700;color:var(--teal);letter-spacing:.1em}
+  .pillar h3{font-size:1.22rem;margin:.5rem 0 .55rem}
+  .pillar p{color:var(--ink-soft);font-size:.96rem}
+  .pillar .tag{display:inline-block;margin-top:.9rem;font-family:var(--mono);font-size:.68rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--amber);background:var(--amber-soft);padding:.35em .6em;border-radius:6px}
+
+  /* ---------- HOW IT WORKS ---------- */
+  .flow{margin-top:2.6rem;display:grid;grid-template-columns:1fr auto 1fr;gap:18px;align-items:center}
+  .chan-stack{display:flex;flex-direction:column;gap:10px}
+  .chan{display:flex;align-items:center;justify-content:space-between;gap:12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.16);border-radius:12px;padding:.8em 1em}
+  .chan b{font-family:var(--body);font-weight:600}
+  .chan .free{font-family:var(--mono);font-size:.66rem;font-weight:700;color:#0B2722;background:#7FE0C8;padding:.25em .55em;border-radius:6px}
+  .engine{background:linear-gradient(150deg,var(--teal),var(--teal-deep));border:1px solid rgba(124,224,200,.4);border-radius:16px;padding:1.3em 1.1em;text-align:center;box-shadow:0 18px 40px -18px rgba(0,0,0,.5)}
+  .engine .e-k{font-family:var(--mono);font-size:.66rem;letter-spacing:.14em;text-transform:uppercase;color:#9FD0C3}
+  .engine b{display:block;font-family:var(--display);font-weight:800;font-size:1.18rem;margin-top:.3rem;color:#fff}
+  .arrow{font-family:var(--mono);color:var(--amber);font-weight:700;text-align:center;font-size:1.3rem}
+  .dash-note{margin-top:1.8rem;font-family:var(--mono);font-size:.82rem;color:#9FD0C3}
+
+  /* ---------- WINS ---------- */
+  .wins{display:grid;grid-template-columns:repeat(2,1fr);gap:18px 30px;margin-top:2.6rem}
+  .win{display:flex;gap:14px;align-items:flex-start}
+  .win .k{font-family:var(--mono);font-weight:700;font-size:.8rem;color:var(--teal);border:1.4px solid var(--mint-line);border-radius:8px;min-width:34px;height:34px;display:grid;place-items:center;flex-shrink:0}
+  .win b{font-family:var(--display);font-weight:700;font-size:1.06rem;letter-spacing:-.01em}
+  .win p{color:var(--ink-soft);font-size:.95rem;margin-top:.15rem}
+
+  /* ---------- ECONOMICS ---------- */
+  .econ-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-top:2.6rem}
+  .econ-card{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.16);border-radius:16px;padding:1.4em 1.2em}
+  .econ-num{font-family:var(--mono);font-weight:700;font-size:clamp(1.5rem,3vw,2rem);color:var(--amber);letter-spacing:-.02em}
+  .econ-card.free .econ-num{color:#7FE0C8}
+  .econ-card p{margin-top:.5rem;font-size:.9rem;color:#AFD2C8}
+  .econ-note{margin-top:1.8rem;font-family:var(--mono);font-size:.78rem;color:#8FBEB2;max-width:60ch}
+
+  /* ---------- SAFETY ---------- */
+  .safety{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-top:2.6rem}
+  .safe{background:var(--cloud);border:1px solid var(--mint-line);border-radius:18px;padding:1.5em 1.4em;box-shadow:var(--shadow)}
+  .safe .mark{width:30px;height:30px;border-radius:8px;background:var(--mint);display:grid;place-items:center;color:var(--teal-deep);font-weight:800;font-family:var(--display)}
+  .safe h3{font-size:1.1rem;margin:.8rem 0 .45rem}
+  .safe p{color:var(--ink-soft);font-size:.94rem}
+
+  /* ---------- ROADMAP ---------- */
+  .road{margin-top:2.8rem;display:grid;gap:0}
+  .road-item{display:grid;grid-template-columns:auto 1fr;gap:22px;padding-bottom:34px;position:relative}
+  .road-item:not(:last-child)::before{content:"";position:absolute;left:21px;top:44px;bottom:0;width:2px;background:linear-gradient(var(--mint-line),transparent)}
+  .road-num{font-family:var(--mono);font-weight:700;width:44px;height:44px;border-radius:50%;display:grid;place-items:center;border:2px solid var(--teal);color:var(--teal);background:var(--paper);z-index:1;font-size:.9rem}
+  .road-item.now .road-num{background:var(--teal);color:#fff}
+  .road-h{display:flex;align-items:baseline;gap:.7rem;flex-wrap:wrap}
+  .road-h b{font-family:var(--display);font-weight:800;font-size:1.18rem;letter-spacing:-.01em}
+  .road-h .when{font-family:var(--mono);font-size:.7rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--amber)}
+  .road-item p{color:var(--ink-soft);margin-top:.3rem;font-size:.97rem;max-width:60ch}
+
+  /* ---------- CLOSE ---------- */
+  .close{text-align:center}
+  .close .wrap{max-width:760px}
+  .close h2{font-size:clamp(2.1rem,5vw,3.2rem);color:#fff}
+  .close .lede{margin-inline:auto;color:#C6E3D9}
+  .close .btn{margin-top:2rem}
+
+  footer{background:var(--ink);color:#7FA59C;padding:34px 0 46px;font-size:.82rem}
+  footer .wrap{display:flex;justify-content:space-between;gap:18px;flex-wrap:wrap;align-items:center}
+  footer .fine{font-family:var(--mono);font-size:.72rem;max-width:52ch;color:#5E8077}
+  footer .fbrand{font-family:var(--mono);font-weight:700;color:#CFE9DF}
+
+  /* ---------- reveal ---------- */
+  .rv{opacity:0;transform:translateY(22px);transition:opacity .7s ease,transform .7s cubic-bezier(.2,.7,.3,1)}
+  .rv.in{opacity:1;transform:none}
+
+  /* ---------- responsive ---------- */
+  @media(max-width:880px){
+    .hero-grid{grid-template-columns:1fr;gap:40px}
+    .phone{max-width:420px}
+    .pillars,.safety{grid-template-columns:1fr}
+    .wins,.econ-grid{grid-template-columns:1fr 1fr}
+    .flow{grid-template-columns:1fr;gap:14px}
+    .arrow{transform:rotate(90deg)}
+    .cost-list{grid-template-columns:1fr}
+  }
+  @media(max-width:520px){
+    .econ-grid{grid-template-columns:1fr}
+    .hero-cta{flex-direction:column;align-items:stretch}
+    .btn{justify-content:center}
+  }
+  @media(prefers-reduced-motion:reduce){
+    html{scroll-behavior:auto}
+    *{animation:none!important;transition:none!important}
+    .rv{opacity:1;transform:none}
+    .bubble{opacity:1;transform:none}
+  }
+</style>
+</head>
+<body>
+
+<!-- HERO -->
+<header class="hero">
+  <div class="wrap">
+    <div class="brandmark"><span class="brand-dot"></span>receptionone.ai</div>
+    <div class="hero-grid">
+      <div>
+        <span class="eyebrow">Appointment booking for clinics in India</span>
+        <h1>Reception that <em>never sleeps.</em></h1>
+        <p class="lede">Patients book, reschedule, and cancel by chat — any hour, in their own language. Your front desk stops drowning in calls, no-shows fall, and you pay cents instead of salaries.</p>
+        <div class="hero-cta">
+          <a href="#how" class="btn btn-primary">See how it works</a>
+          <a href="#economics" class="btn btn-ghost">The economics →</a>
+        </div>
+        <div class="trustrow">
+          <span class="chip">24/7 booking</span>
+          <span class="chip">WhatsApp + free web chat</span>
+          <span class="chip">~₹0.13 / reminder</span>
+          <span class="chip">No diagnosis, ever</span>
+        </div>
+      </div>
+
+      <!-- signature: a booking happening live -->
+      <div class="phone" id="phone">
+        <div class="phone-top">
+          <div class="avatar">S</div>
+          <div><b>Sunrise Clinic</b><span>online · replies instantly</span></div>
+        </div>
+        <div class="thread">
+          <div class="bubble bub-clinic">Hi! This is Sunrise Clinic. How can I help?</div>
+          <div class="bubble bub-patient">Dr. Asha, tomorrow morning</div>
+          <div class="bubble bub-clinic">Here's what's open with Dr. Asha Rao (Cardiology):
+            <div class="slotrow">
+              <span class="slot">9:00</span>
+              <span class="slot is-picked">10:00</span>
+              <span class="slot">11:30</span>
+            </div>
+          </div>
+          <div class="bubble bub-patient">10:00 please</div>
+          <div class="bubble confirm">Booked — Dr. Asha Rao, tomorrow 10:00 AM. We'll send a reminder. ✓</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- PROBLEM -->
+<section class="sec">
+  <div class="wrap rv">
+    <span class="eyebrow">The problem</span>
+    <h2>The front desk is a bottleneck.</h2>
+    <p class="lede">Every appointment runs through a ringing phone and one busy human. After hours, calls go unanswered. Patients forget and don't show. Staff spend the day on the phone instead of with patients.</p>
+    <ul class="cost-list">
+      <li><b>Missed calls</b><small>A busy or after-hours line is a lost appointment — and a patient who calls the clinic next door.</small></li>
+      <li><b>No-shows</b><small>Forgotten appointments leave empty, unpaid slots that can't be refilled in time.</small></li>
+      <li><b>Zero after-hours cover</b><small>Patients want to book at 10pm and on Sundays. A front desk can't.</small></li>
+      <li><b>Manual reminders</b><small>Calling everyone to confirm is staff time you simply can't scale.</small></li>
+    </ul>
+  </div>
+</section>
+
+<!-- SOLUTION / PILLARS -->
+<section class="sec sec--dark">
+  <div class="wrap rv">
+    <span class="eyebrow">The solution</span>
+    <h2>One chat thread runs your whole front desk.</h2>
+    <p class="lede">A patient sends a message. The system does the rest — checks real availability, books, reminds, and routes — without a human picking up the phone.</p>
+    <div class="pillars">
+      <div class="pillar">
+        <span class="p-no">01</span>
+        <h3>Book, reschedule, cancel</h3>
+        <p>Patients self-serve at any hour. The engine checks live availability and never double-books a slot.</p>
+        <span class="tag">The core</span>
+      </div>
+      <div class="pillar">
+        <span class="p-no">02</span>
+        <h3>Reminders that cut no-shows</h3>
+        <p>Automatic confirmations and timed reminders go out on their own — sent once, never twice.</p>
+        <span class="tag">Fewer empty slots</span>
+      </div>
+      <div class="pillar">
+        <span class="p-no">03</span>
+        <h3>Understands plain language</h3>
+        <p>Optionally reads free-text and mixed Hindi, Telugu and English, and points symptoms to the right department. It never names a disease.</p>
+        <span class="tag">Optional AI</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- HOW IT WORKS -->
+<section class="sec sec--ink" id="how">
+  <div class="wrap rv">
+    <span class="eyebrow">How it works</span>
+    <h2>One brain. Many ways in.</h2>
+    <p class="lede">A single scheduling engine is the source of truth. WhatsApp is just one door — a free web-chat widget or Telegram plug into the same engine, so you're never locked to one platform or one bill.</p>
+    <div class="flow">
+      <div class="chan-stack">
+        <div class="chan"><b>WhatsApp</b><span class="chip" style="border-color:rgba(255,255,255,.2);background:rgba(255,255,255,.06);color:#D8EDE6">pay per reminder</span></div>
+        <div class="chan"><b>Web chat widget</b><span class="free">FREE</span></div>
+        <div class="chan"><b>Telegram bot</b><span class="free">FREE</span></div>
+      </div>
+      <div class="arrow">→</div>
+      <div>
+        <div class="engine">
+          <span class="e-k">Scheduling engine</span>
+          <b>Books · reminds · routes</b>
+        </div>
+        <div class="chan" style="margin-top:12px"><b>Staff dashboard</b><span style="font-family:var(--mono);font-size:.66rem;color:#9FD0C3">your cockpit</span></div>
+      </div>
+    </div>
+    <p class="dash-note">Built channel-agnostic on Node, React and PostgreSQL — add a new channel without touching the core.</p>
+  </div>
+</section>
+
+<!-- WHY IT WINS -->
+<section class="sec">
+  <div class="wrap rv">
+    <span class="eyebrow">Why it works here</span>
+    <h2>Built for how India already chats.</h2>
+    <div class="wins">
+      <div class="win"><span class="k">A</span><div><b>The app patients live in</b><p>No download, no account, no learning curve — they already message on it every day.</p></div></div>
+      <div class="win"><span class="k">B</span><div><b>Their own language</b><p>Books in Hindi, Telugu or English — even all three mixed in one message.</p></div></div>
+      <div class="win"><span class="k">C</span><div><b>Always open</b><p>2am bookings, weekends, festival days. The line is never busy.</p></div></div>
+      <div class="win"><span class="k">D</span><div><b>Almost no cost</b><p>Incoming booking chats are free; you pay only for the reminders you choose to send.</p></div></div>
+      <div class="win"><span class="k">E</span><div><b>Safe by design</b><p>Symptoms are routed and triaged, never diagnosed — keeping it useful and out of regulated territory.</p></div></div>
+      <div class="win"><span class="k">F</span><div><b>Scales without hiring</b><p>One clinic or a hundred, the same engine handles the volume a front desk can't.</p></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ECONOMICS -->
+<section class="sec sec--dark" id="economics">
+  <div class="wrap rv">
+    <span class="eyebrow">The economics</span>
+    <h2>Cents, not salaries.</h2>
+    <p class="lede">Meta charges nothing to send and receive booking chats. You pay a few paise only for the proactive reminders that keep slots filled.</p>
+    <div class="econ-grid">
+      <div class="econ-card free"><div class="econ-num">₹0</div><p>Incoming booking conversation</p></div>
+      <div class="econ-card"><div class="econ-num">~₹0.13</div><p>Per reminder / confirmation sent</p></div>
+      <div class="econ-card"><div class="econ-num">≈₹390</div><p>A month at 1,000 appointments (~3 messages each)</p></div>
+      <div class="econ-card free"><div class="econ-num">₹0</div><p>Web chat &amp; Telegram channels</p></div>
+    </div>
+    <p class="econ-note">Plus 18% GST. Rates are set by Meta and shift roughly twice a year. The free channels cost nothing at all — you can launch on web chat before a WhatsApp account is even approved.</p>
+  </div>
+</section>
+
+<!-- SAFETY -->
+<section class="sec">
+  <div class="wrap rv">
+    <span class="eyebrow">Trust &amp; compliance</span>
+    <h2>Safe, private, and legal in India.</h2>
+    <p class="lede">A clinic is handing over patient conversations. Every part is built to be ethical by default and to meet India's data-protection law.</p>
+    <div class="safety">
+      <div class="safe">
+        <div class="mark">+</div>
+        <h3>Never diagnoses</h3>
+        <p>Symptoms point a patient to the right doctor and flag urgency. The system never names a condition — keeping it safe and outside medical-device rules.</p>
+      </div>
+      <div class="safe">
+        <div class="mark">✓</div>
+        <h3>Consent first</h3>
+        <p>No message goes out without the patient's opt-in. They choose to be contacted — in line with the DPDP Act and WhatsApp's own rules.</p>
+      </div>
+      <div class="safe">
+        <div class="mark">!</div>
+        <h3>Emergency-aware</h3>
+        <p>Red-flag symptoms trigger an immediate "please seek urgent care" — the assistant never delays a real emergency.</p>
+      </div>
+      <div class="safe">
+        <div class="mark">☎</div>
+        <h3>Always a human</h3>
+        <p>Patients always know they're chatting with an assistant and can reach clinic staff in a single step.</p>
+      </div>
+      <div class="safe">
+        <div class="mark">⌂</div>
+        <h3>Your data, handled right</h3>
+        <p>Built for India's DPDP Act: only the data needed, stored securely, corrected or deleted on request, and never sold.</p>
+      </div>
+      <div class="safe">
+        <div class="mark">≡</div>
+        <h3>Every change logged</h3>
+        <p>An append-only trail records who booked, moved or cancelled what — for accountability and audits.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ROADMAP -->
+<section class="sec sec--ink">
+  <div class="wrap rv">
+    <span class="eyebrow">Where it goes</span>
+    <h2>Start lean. Grow on demand.</h2>
+    <div class="road">
+      <div class="road-item now">
+        <div class="road-num">V1</div>
+        <div>
+          <div class="road-h"><b>Booking that works</b><span class="when">Now</span></div>
+          <p>WhatsApp and free web-chat booking, automatic reminders, and a staff dashboard to run the day.</p>
+        </div>
+      </div>
+      <div class="road-item">
+        <div class="road-num">V2</div>
+        <div>
+          <div class="road-h"><b>Fill more slots</b><span class="when">Next</span></div>
+          <p>Deposits to kill no-shows, automatic waitlist backfill when someone cancels, multi-clinic support, and analytics.</p>
+        </div>
+      </div>
+      <div class="road-item">
+        <div class="road-num">V3</div>
+        <div>
+          <div class="road-h"><b>Plug into everything</b><span class="when">Later</span></div>
+          <p>EHR / hospital-system integration, SMS and voice as extra channels, and deeper symptom routing.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CLOSE -->
+<section class="sec close" style="background:linear-gradient(160deg,var(--teal-deep),var(--teal-deeper))">
+  <div class="wrap rv">
+    <span class="eyebrow">The pitch, in one line</span>
+    <h2>Give a clinic a front desk that scales.</h2>
+    <p class="lede">A reception that answers every patient, in every language, at every hour — for the price of a few cups of chai a month.</p>
+    <a href="#" class="btn btn-primary">Start building</a>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span class="fbrand">receptionone.ai</span>
+    <span class="fine">Built for clinics in India and designed around the DPDP Act, 2023. Symptom features provide triage and routing only — not medical advice or diagnosis. Compliance depends on correct deployment; review with a qualified advisor before going live.</span>
+  </div>
+</footer>
+
+<script>
+  // hero booking animation on load
+  window.addEventListener('load', function(){
+    var p = document.getElementById('phone');
+    if (p && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) p.classList.add('anim');
+    else if (p) p.classList.add('shown');
+  });
+
+  // scroll reveals
+  var io = new IntersectionObserver(function(entries){
+    entries.forEach(function(e){ if(e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target); }});
+  },{threshold:.16});
+  document.querySelectorAll('.rv').forEach(function(el){ io.observe(el); });
+</script>
+</body>
+</html>

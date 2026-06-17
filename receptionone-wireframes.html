@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>receptionone.ai — Wireframes &amp; User Flow</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Hanken+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#F1F5F3; --card:#FFFFFF; --ink:#0B2722; --muted:#5C746F;
+    --teal:#0E7C6B; --teal-deep:#0A4339; --amber:#EDA23B;
+    --line:#DDE6E2; --wf:#EEF2F1; --wf-bar:#D7E0DD; --wf-bar-lt:#E6ECEA;
+    --shadow:0 1px 2px rgba(11,39,34,.04), 0 14px 34px -16px rgba(11,39,34,.18);
+    --display:'Bricolage Grotesque','Hanken Grotesk',system-ui,sans-serif;
+    --body:'Hanken Grotesk',system-ui,-apple-system,'Segoe UI',sans-serif;
+    --mono:'JetBrains Mono',ui-monospace,Menlo,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:var(--body);background:var(--bg);color:var(--ink);line-height:1.55;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1000px;margin-inline:auto;padding-inline:24px}
+
+  /* header */
+  .doc-head{background:linear-gradient(155deg,var(--teal-deep),#062B24);color:#EAF6F1;padding:40px 0 34px}
+  .brandmark{font-family:var(--mono);font-weight:700;font-size:.92rem;color:#CFE9DF;display:flex;align-items:center;gap:.5em}
+  .brand-dot{width:9px;height:9px;border-radius:50%;background:var(--amber);box-shadow:0 0 0 4px rgba(237,162,59,.22)}
+  .doc-head h1{font-family:var(--display);font-weight:800;font-size:clamp(1.8rem,4vw,2.6rem);letter-spacing:-.02em;margin:.7rem 0 .4rem;color:#fff}
+  .doc-head p{color:#B7D6CC;max-width:54ch;font-size:1.02rem}
+  .map{display:flex;flex-wrap:wrap;gap:8px;margin-top:1.4rem}
+  .map span{font-family:var(--mono);font-size:.7rem;font-weight:500;padding:.45em .75em;border-radius:999px;border:1px solid rgba(255,255,255,.22);background:rgba(255,255,255,.05);color:#D8EDE6}
+  .map .arr{border:none;background:none;color:var(--amber);padding:.45em .1em}
+
+  /* sections */
+  .sec{padding:clamp(44px,7vw,80px) 0}
+  .eyebrow{font-family:var(--mono);font-size:.72rem;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:var(--teal);display:inline-flex;align-items:center;gap:.6em}
+  .eyebrow::before{content:"";width:24px;height:1.5px;background:var(--amber)}
+  h2{font-family:var(--display);font-weight:800;font-size:clamp(1.6rem,3.2vw,2.2rem);letter-spacing:-.02em;margin:.45rem 0 .3rem}
+  .sub{color:var(--muted);max-width:60ch;margin-bottom:1.4rem}
+  h3.block{font-family:var(--display);font-weight:800;font-size:1.12rem;letter-spacing:-.01em;margin:2.2rem 0 .2rem}
+  .tiny{color:var(--muted);font-size:.9rem;margin-bottom:.9rem}
+
+  /* mermaid diagram cards */
+  .diagram{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px 14px;box-shadow:var(--shadow);overflow-x:auto}
+  .mermaid{display:flex;justify-content:center;min-width:520px}
+
+  /* ---------- WIREFRAME KIT ---------- */
+  .cap{font-family:var(--display);font-weight:800;font-size:1.1rem;letter-spacing:-.01em;margin:2.4rem 0 .15rem}
+  .cap .step{font-family:var(--mono);font-size:.72rem;color:var(--teal);margin-right:.5em}
+  .note{color:var(--muted);font-size:.88rem;margin-bottom:.9rem}
+
+  .screen{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);overflow:hidden}
+  .chrome{display:flex;align-items:center;gap:9px;padding:9px 13px;background:var(--wf);border-bottom:1px solid var(--line)}
+  .chrome .d{display:flex;gap:5px}
+  .chrome .d i{width:9px;height:9px;border-radius:50%;background:#cdd8d4}
+  .chrome .url{flex:1;height:19px;border-radius:6px;background:#fff;border:1px solid var(--line);font-family:var(--mono);font-size:.62rem;color:#9aaaa5;display:flex;align-items:center;padding-left:9px}
+
+  .app{display:grid;grid-template-columns:158px 1fr;min-height:330px}
+  .side{background:#F6F9F8;border-right:1px solid var(--line);padding:14px 12px}
+  .side .logo{font-family:var(--mono);font-weight:700;font-size:.78rem;color:var(--teal);margin-bottom:16px;display:flex;align-items:center;gap:.4em}
+  .side .logo i{width:7px;height:7px;border-radius:50%;background:var(--amber)}
+  .navi{font-size:.86rem;color:var(--muted);padding:.5em .6em;border-radius:8px;margin-bottom:3px}
+  .navi.on{background:#E2EFEB;color:var(--teal-deep);font-weight:600}
+  .pane{padding:16px 18px}
+
+  .topbar{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:14px}
+  .seg{font-family:var(--mono);font-size:.74rem;border:1px solid var(--line);border-radius:8px;padding:.45em .7em;color:var(--ink);background:#fff;display:flex;align-items:center;gap:.5em}
+  .seg .mut{color:#9aaaa5}
+  .spacer{flex:1}
+  .btnw{font-size:.8rem;font-weight:600;background:var(--teal);color:#fff;border-radius:8px;padding:.5em .85em;border:none;display:inline-flex;align-items:center;gap:.4em}
+  .btnw.ghost{background:#fff;color:var(--teal-deep);border:1.4px solid var(--teal)}
+  .btnw.block{width:100%;justify-content:center;padding:.7em;font-size:.9rem}
+
+  .grp{font-family:var(--mono);font-size:.7rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--teal);margin:14px 0 8px}
+  .appt{display:flex;align-items:center;gap:12px;padding:.7em .8em;border:1px solid var(--line);border-radius:10px;margin-bottom:7px;background:#fff}
+  .appt .time{font-family:var(--mono);font-weight:700;font-size:.84rem;min-width:52px}
+  .appt .who{flex:1;min-width:0}
+  .appt .who b{font-weight:600;font-size:.9rem;display:block}
+  .appt .who small{color:var(--muted);font-family:var(--mono);font-size:.7rem}
+  .tag{font-family:var(--mono);font-size:.64rem;font-weight:700;padding:.3em .55em;border-radius:6px;background:#E2EFEB;color:var(--teal-deep)}
+  .lnk{font-size:.74rem;color:var(--muted);border:1px solid var(--line);border-radius:7px;padding:.35em .55em}
+
+  .field{margin-bottom:12px}
+  .field .lbl{font-family:var(--mono);font-size:.66rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:5px}
+  .inp{height:38px;border:1.3px solid var(--line);border-radius:9px;background:#fff;display:flex;align-items:center;padding:0 11px;font-size:.86rem;color:#9aaaa5;justify-content:space-between}
+  .inp.dash{border-style:dashed}
+  .inp b{color:var(--ink);font-weight:600}
+  .slots{display:flex;flex-wrap:wrap;gap:7px}
+  .pill{font-family:var(--mono);font-size:.78rem;font-weight:700;padding:.45em .72em;border-radius:9px;border:1.3px solid var(--line);color:var(--teal-deep);background:#fff}
+  .pill.on{background:var(--teal);color:#fff;border-color:var(--teal)}
+  .pill.off{color:#bcc8c4;background:#F4F6F5;text-decoration:line-through}
+  .bar{height:9px;border-radius:6px;background:var(--wf-bar)}
+
+  /* phone wireframe */
+  .phone-wf{max-width:330px;margin-inline:auto;border-radius:30px;border:9px solid #16302b;background:#0f2722;padding:0;overflow:hidden}
+  .pf-status{background:#0d211d;color:#7fa59c;font-family:var(--mono);font-size:.62rem;text-align:center;padding:6px}
+  .pf-top{display:flex;align-items:center;gap:9px;padding:11px 13px;background:var(--teal-deep);color:#fff}
+  .pf-av{width:30px;height:30px;border-radius:50%;background:var(--amber)}
+  .pf-top b{font-size:.86rem}.pf-top small{display:block;font-family:var(--mono);font-size:.6rem;color:#9FD0C3}
+  .pf-body{background:#E7EFEC;padding:13px 11px;display:flex;flex-direction:column;gap:8px;min-height:300px}
+  .msg{max-width:82%;padding:.55em .72em;border-radius:13px;font-size:.8rem}
+  .msg.in{align-self:flex-start;background:#fff;border-bottom-left-radius:4px;color:var(--ink)}
+  .msg.out{align-self:flex-end;background:#CFE9DF;border-bottom-right-radius:4px;color:var(--ink)}
+  .msg.conf{align-self:flex-start;background:#0A4339;color:#DFF6EE;border-bottom-left-radius:4px;font-weight:600;font-size:.78rem}
+  .msg .chips{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
+  .msg .c{font-family:var(--mono);font-size:.68rem;font-weight:700;padding:.32em .55em;border-radius:7px;border:1px solid var(--amber);color:#b9781f}
+  .msg .c.on{background:var(--amber);color:#3a2606}
+  .pf-input{display:flex;align-items:center;gap:8px;padding:9px 11px;background:#fff;border-top:1px solid #d6e0dc}
+  .pf-input .box{flex:1;height:30px;border-radius:999px;background:#eef2f1;border:1px solid #dde6e2;font-size:.74rem;color:#9aaaa5;display:flex;align-items:center;padding:0 12px}
+  .pf-input .snd{width:30px;height:30px;border-radius:50%;background:var(--teal)}
+
+  /* login wireframe */
+  .login-screen{display:grid;place-items:center;min-height:300px;background:#F6F9F8;padding:30px}
+  .login-card{background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:26px;width:300px;max-width:100%}
+  .login-card .lg{font-family:var(--mono);font-weight:700;font-size:.78rem;color:var(--teal);text-align:center}
+  .login-card h4{font-family:var(--display);font-weight:800;text-align:center;margin:.3rem 0 1.2rem;font-size:1.15rem}
+
+  /* doctors admin */
+  .docs{display:grid;grid-template-columns:170px 1fr;gap:0;min-height:300px}
+  .doc-list{border-right:1px solid var(--line);padding:14px}
+  .doc-i{font-size:.85rem;padding:.55em .6em;border-radius:8px;margin-bottom:4px;color:var(--muted)}
+  .doc-i.on{background:#E2EFEB;color:var(--teal-deep);font-weight:600}
+  .doc-i.add{color:var(--teal);font-family:var(--mono);font-size:.78rem;font-weight:700}
+  .hours{padding:15px 16px}
+  .hrow{display:flex;align-items:center;gap:10px;padding:.45em 0;border-bottom:1px dashed var(--line)}
+  .hrow .day{font-family:var(--mono);font-size:.72rem;font-weight:700;width:42px;color:var(--ink)}
+  .hrow .rng{font-family:var(--mono);font-size:.72rem;padding:.3em .55em;border-radius:7px;background:#E2EFEB;color:var(--teal-deep)}
+  .hrow .rng.muted{background:#F4F6F5;color:#bcc8c4}
+  .hrow .add{font-family:var(--mono);font-size:.72rem;color:var(--teal);margin-left:auto;font-weight:700}
+
+  footer{background:var(--ink);color:#7FA59C;padding:30px 0 42px;font-size:.82rem;margin-top:30px}
+  footer .fb{font-family:var(--mono);font-weight:700;color:#CFE9DF}
+
+  @media(max-width:720px){
+    .app{grid-template-columns:1fr}.side{display:none}
+    .docs{grid-template-columns:1fr}.doc-list{border-right:none;border-bottom:1px solid var(--line)}
+    .mermaid{min-width:460px}
+  }
+</style>
+</head>
+<body>
+
+<header class="doc-head">
+  <div class="wrap">
+    <div class="brandmark"><span class="brand-dot"></span>receptionone.ai</div>
+    <h1>Wireframes &amp; User Flow</h1>
+    <p>How patients and clinic staff move through the product — the journeys first, then a low-fidelity sketch of every screen.</p>
+    <div class="map">
+      <span>Patient · Chat booking</span>
+      <span class="arr">→</span>
+      <span>Staff · Sign in</span>
+      <span class="arr">→</span>
+      <span>Day view</span>
+      <span class="arr">→</span>
+      <span>New appointment</span>
+      <span class="arr">→</span>
+      <span>Doctors &amp; hours</span>
+    </div>
+  </div>
+</header>
+
+<!-- USER FLOWS -->
+<section class="sec">
+  <div class="wrap">
+    <span class="eyebrow">User flows</span>
+    <h2>How people move through it</h2>
+    <p class="sub">Three journeys: the patient booking by chat, staff running the day, and the system sending notifications.</p>
+
+    <h3 class="block">1 · Patient booking (chat)</h3>
+    <p class="tiny">Patient-initiated, so the conversation is free. Covers book, reschedule, cancel, symptom routing, and the emergency exit.</p>
+    <div class="diagram">
+<pre class="mermaid">
+flowchart TD
+  A(["Patient messages the clinic"]):::entry --> B{"First contact?"}
+  B -- "Yes" --> C["Ask consent to message"]:::sys
+  B -- "No" --> D["Greeting + menu"]
+  C --> D
+  D --> E{"What do they want?"}
+  E -- "Book" --> F["Choose doctor or specialty"]
+  E -- "Reschedule" --> R["Find their booking"]
+  E -- "Cancel" --> X["Find their booking"]
+  E -- "Describe symptoms" --> S["Route to department + flag urgency"]:::ai
+  S --> SE{"Red flag?"}
+  SE -- "Yes" --> SU[/"Urge immediate care"/]:::warn
+  SE -- "No" --> F
+  F --> G["Show open slots"]
+  R --> G
+  G --> H{"Pick a slot"}
+  H -- "None suitable" --> G
+  H -- "Picks one" --> I["Confirm details"]
+  I --> J(["Booked — confirmation sent"]):::done
+  X --> XC(["Cancelled — slot freed"]):::done
+  J --> K[/"Reminders sent 24h and 2h before"/]:::sys
+  classDef entry fill:#0E7C6B,stroke:#073B33,color:#fff;
+  classDef done fill:#0A4339,stroke:#062B24,color:#fff;
+  classDef warn fill:#EDA23B,stroke:#b9781f,color:#3a2606;
+  classDef ai fill:#F8E7CD,stroke:#EDA23B,color:#5a4112;
+  classDef sys fill:#EAF1EF,stroke:#BBDDD2,color:#0B2722;
+</pre>
+    </div>
+
+    <h3 class="block">2 · Staff running the day</h3>
+    <p class="tiny">Reception and admins manage everything from the dashboard.</p>
+    <div class="diagram">
+<pre class="mermaid">
+flowchart TD
+  L(["Staff opens dashboard"]):::entry --> M["Sign in"]
+  M --> N["Day view — today's appointments"]
+  N --> O{"Action"}
+  O -- "New appointment" --> P["Search patient by phone"]
+  P --> Q{"Found?"}
+  Q -- "Yes" --> T["Pick doctor, then slot"]
+  Q -- "No" --> P2["Capture name"]
+  P2 --> T
+  T --> U(["Booked"]):::done
+  O -- "Reschedule" --> RS["Pick a new slot"]
+  RS --> RU(["Updated"]):::done
+  O -- "Cancel" --> CC(["Cancelled"]):::done
+  O -- "Manage doctors" --> AD["Edit doctors and weekly hours"]
+  classDef entry fill:#0E7C6B,stroke:#073B33,color:#fff;
+  classDef done fill:#0A4339,stroke:#062B24,color:#fff;
+</pre>
+    </div>
+
+    <h3 class="block">3 · Notifications</h3>
+    <p class="tiny">Confirmations on every change, and reminders that are sent exactly once.</p>
+    <div class="diagram">
+<pre class="mermaid">
+flowchart LR
+  B1["Booking or change"] --> C1["Send confirmation"]:::sys
+  T1(["Reminder job runs"]):::entry --> F1{"Due in 24h or 2h?"}
+  F1 -- "No" --> W1["Wait"]
+  F1 -- "Yes" --> I1{"Already reminded?"}
+  I1 -- "Yes" --> SK1["Skip"]
+  I1 -- "No" --> S1(["Send reminder once"]):::done
+  classDef entry fill:#0E7C6B,stroke:#073B33,color:#fff;
+  classDef done fill:#0A4339,stroke:#062B24,color:#fff;
+  classDef sys fill:#EAF1EF,stroke:#BBDDD2,color:#0B2722;
+</pre>
+    </div>
+  </div>
+</section>
+
+<!-- WIREFRAMES -->
+<section class="sec" style="background:#E9EFED">
+  <div class="wrap">
+    <span class="eyebrow">Wireframes</span>
+    <h2>Every screen, sketched</h2>
+    <p class="sub">Low-fidelity layouts — structure and labels, not final visuals. One patient screen, four staff screens.</p>
+
+    <!-- patient chat -->
+    <div class="cap"><span class="step">PATIENT</span>Chat booking</div>
+    <p class="note">The whole booking happens in one thread — doctor, slots as tappable chips, confirmation, and a promised reminder.</p>
+    <div class="phone-wf">
+      <div class="pf-status">9:41 — receptionone.ai</div>
+      <div class="pf-top"><div class="pf-av"></div><div><b>Sunrise Clinic</b><small>online · replies instantly</small></div></div>
+      <div class="pf-body">
+        <div class="msg in">Hi! How can I help? Book, reschedule, or cancel?</div>
+        <div class="msg out">Dr. Asha, tomorrow morning</div>
+        <div class="msg in">Open slots with Dr. Asha Rao:
+          <div class="chips"><span class="c">9:00</span><span class="c on">10:00</span><span class="c">11:30</span></div>
+        </div>
+        <div class="msg out">10:00</div>
+        <div class="msg conf">Booked ✓ Dr. Asha Rao, tomorrow 10:00 AM</div>
+      </div>
+      <div class="pf-input"><div class="box">Type a message…</div><div class="snd"></div></div>
+    </div>
+
+    <!-- login -->
+    <div class="cap"><span class="step">STAFF</span>Sign in</div>
+    <p class="note">Email + password. Sessions are cookie-based; patients never log in.</p>
+    <div class="screen">
+      <div class="chrome"><div class="d"><i></i><i></i><i></i></div><div class="url">app.receptionone.ai/login</div></div>
+      <div class="login-screen">
+        <div class="login-card">
+          <div class="lg">receptionone.ai</div>
+          <h4>Staff sign in</h4>
+          <div class="field"><span class="lbl">Email</span><div class="inp dash">you@clinic.in</div></div>
+          <div class="field"><span class="lbl">Password</span><div class="inp dash">••••••••</div></div>
+          <div class="btnw block">Sign in</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- day view -->
+    <div class="cap"><span class="step">STAFF</span>Day view — the cockpit</div>
+    <p class="note">Home screen. Pick a date and doctor; see the day's appointments grouped by doctor, each with reschedule / cancel.</p>
+    <div class="screen">
+      <div class="chrome"><div class="d"><i></i><i></i><i></i></div><div class="url">app.receptionone.ai</div></div>
+      <div class="app">
+        <div class="side">
+          <div class="logo"><i></i>receptionone</div>
+          <div class="navi on">Today</div>
+          <div class="navi">New appointment</div>
+          <div class="navi">Doctors &amp; hours</div>
+          <div class="navi">Settings</div>
+        </div>
+        <div class="pane">
+          <div class="topbar">
+            <div class="seg"><span class="mut">◀</span>&nbsp;Tue 17 Jun&nbsp;<span class="mut">▶</span></div>
+            <div class="seg">All doctors&nbsp;<span class="mut">▾</span></div>
+            <div class="spacer"></div>
+            <div class="btnw">+ New appointment</div>
+          </div>
+          <div class="grp">Dr. Asha Rao · Cardiology</div>
+          <div class="appt"><span class="time">09:00</span><div class="who"><b>Ravi Kumar</b><small>+91 99990 00001</small></div><span class="tag">Booked</span><span class="lnk">Reschedule</span><span class="lnk">Cancel</span></div>
+          <div class="appt"><span class="time">10:30</span><div class="who"><b>Sita Devi</b><small>+91 99990 00002</small></div><span class="tag">Booked</span><span class="lnk">Reschedule</span><span class="lnk">Cancel</span></div>
+          <div class="grp">Dr. Mohan Rao · Dermatology</div>
+          <div class="appt"><span class="time">11:00</span><div class="who"><b>Anjali Nair</b><small>+91 99990 00003</small></div><span class="tag">Booked</span><span class="lnk">Reschedule</span><span class="lnk">Cancel</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- new appointment -->
+    <div class="cap"><span class="step">STAFF</span>New appointment</div>
+    <p class="note">Search by phone (autofills a returning patient), pick doctor, then a free slot. Taken slots are disabled.</p>
+    <div class="screen">
+      <div class="chrome"><div class="d"><i></i><i></i><i></i></div><div class="url">app.receptionone.ai/new</div></div>
+      <div class="app">
+        <div class="side">
+          <div class="logo"><i></i>receptionone</div>
+          <div class="navi">Today</div>
+          <div class="navi on">New appointment</div>
+          <div class="navi">Doctors &amp; hours</div>
+        </div>
+        <div class="pane">
+          <div class="field"><span class="lbl">Patient phone</span><div class="inp"><b>+91 99990 00001</b><span style="color:var(--teal);font-weight:600;font-size:.78rem">Found: Ravi Kumar</span></div></div>
+          <div class="field"><span class="lbl">Doctor</span><div class="inp"><b>Dr. Asha Rao — Cardiology</b><span class="mut" style="color:#9aaaa5">▾</span></div></div>
+          <div class="field"><span class="lbl">Date</span><div class="inp"><b>Wed 18 Jun</b><span class="mut" style="color:#9aaaa5">▾</span></div></div>
+          <div class="field"><span class="lbl">Available slots</span>
+            <div class="slots">
+              <span class="pill off">09:00</span>
+              <span class="pill">09:30</span>
+              <span class="pill on">10:00</span>
+              <span class="pill">11:30</span>
+              <span class="pill off">12:00</span>
+            </div>
+          </div>
+          <div class="btnw block">Confirm booking</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- doctors & availability -->
+    <div class="cap"><span class="step">ADMIN</span>Doctors &amp; weekly hours</div>
+    <p class="note">Admin-only. Add doctors and set each one's working hours per weekday — the source the slot engine reads from.</p>
+    <div class="screen">
+      <div class="chrome"><div class="d"><i></i><i></i><i></i></div><div class="url">app.receptionone.ai/doctors</div></div>
+      <div class="docs">
+        <div class="doc-list">
+          <div class="doc-i on">Dr. Asha Rao</div>
+          <div class="doc-i">Dr. Mohan Rao</div>
+          <div class="doc-i">Dr. Priya Iyer</div>
+          <div class="doc-i add">+ Add doctor</div>
+        </div>
+        <div class="hours">
+          <div class="grp" style="margin-top:0">Weekly hours · Dr. Asha Rao · 30-min slots</div>
+          <div class="hrow"><span class="day">Mon</span><span class="rng">09:00–12:00</span><span class="rng">16:00–18:00</span><span class="add">+ add</span></div>
+          <div class="hrow"><span class="day">Tue</span><span class="rng">09:00–12:00</span><span class="add">+ add</span></div>
+          <div class="hrow"><span class="day">Wed</span><span class="rng">09:00–12:00</span><span class="add">+ add</span></div>
+          <div class="hrow"><span class="day">Thu</span><span class="rng">16:00–18:00</span><span class="add">+ add</span></div>
+          <div class="hrow"><span class="day">Fri</span><span class="rng">09:00–12:00</span><span class="add">+ add</span></div>
+          <div class="hrow"><span class="day">Sat</span><span class="rng muted">closed</span><span class="add">+ add</span></div>
+          <div class="hrow"><span class="day">Sun</span><span class="rng muted">closed</span><span class="add">+ add</span></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span class="fb">receptionone.ai</span> — wireframes &amp; user flow · low-fidelity, for build planning.
+  </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>
+  mermaid.initialize({
+    startOnLoad:true,
+    theme:'base',
+    themeVariables:{
+      fontFamily:'Hanken Grotesk, system-ui, sans-serif',
+      fontSize:'14px',
+      primaryColor:'#D6ECE4',
+      primaryTextColor:'#0B2722',
+      primaryBorderColor:'#0E7C6B',
+      lineColor:'#3C544F',
+      secondaryColor:'#F8E7CD',
+      tertiaryColor:'#ffffff'
+    },
+    flowchart:{curve:'basis', nodeSpacing:42, rankSpacing:46, padding:8}
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,446 @@
+// Prisma-backed Repository adapter. Maps the String `status` column to the
+// AppointmentStatus union at this boundary and wraps writes in real DB
+// transactions via the Repository.transaction() contract.
+
+import { PrismaClient, Prisma } from "@prisma/client";
+
+import type {
+  Appointment,
+  AppointmentEvent,
+  AppointmentEventType,
+  AppointmentStatus,
+  Availability,
+  Doctor,
+  Patient,
+} from "../domain/types.js";
+import {
+  AppointmentStatus as Status,
+  AppointmentEventType as EventType,
+} from "../domain/types.js";
+import type { Staff } from "../auth/staff.js";
+import { toStaffRole } from "../auth/staff.js";
+import type {
+  AppendEventInput,
+  AppointmentView,
+  AppointmentViewQuery,
+  AvailabilityDraft,
+  CreateAppointmentInput,
+  CreateAvailabilityInput,
+  CreateDoctorInput,
+  CreatePatientInput,
+  ListAppointmentsQuery,
+  Repository,
+  UpdateAppointmentInput,
+  UpdateDoctorInput,
+} from "./repository.js";
+import type {
+  CreateStaffInput,
+  StaffRepository,
+} from "./staff-repository.js";
+
+type PrismaDb = PrismaClient | Prisma.TransactionClient;
+
+const STATUSES = new Set<string>(Object.values(Status));
+const EVENT_TYPES = new Set<string>(Object.values(EventType));
+
+function toStatus(value: string): AppointmentStatus {
+  if (!STATUSES.has(value)) {
+    throw new Error(`Unknown appointment status from DB: ${value}`);
+  }
+  return value as AppointmentStatus;
+}
+
+function toEventType(value: string): AppointmentEventType {
+  if (!EVENT_TYPES.has(value)) {
+    throw new Error(`Unknown appointment event type from DB: ${value}`);
+  }
+  return value as AppointmentEventType;
+}
+
+type DoctorRow = {
+  id: string;
+  name: string;
+  department: string;
+  slotDurationMinutes: number;
+};
+type AvailabilityRow = {
+  id: string;
+  doctorId: string;
+  dayOfWeek: number;
+  startMinutes: number;
+  endMinutes: number;
+};
+type PatientRow = {
+  id: string;
+  phone: string;
+  name: string;
+  consentAt: Date | null;
+};
+type AppointmentRow = {
+  id: string;
+  doctorId: string;
+  patientId: string;
+  start: Date;
+  end: Date;
+  status: string;
+  createdAt: Date;
+  updatedAt: Date;
+};
+type EventRow = {
+  id: string;
+  appointmentId: string;
+  type: string;
+  metadata: Prisma.JsonValue;
+  at: Date;
+};
+
+function toDoctor(row: DoctorRow): Doctor {
+  return {
+    id: row.id,
+    name: row.name,
+    department: row.department,
+    slotDurationMinutes: row.slotDurationMinutes,
+  };
+}
+
+function toAvailability(row: AvailabilityRow): Availability {
+  return {
+    id: row.id,
+    doctorId: row.doctorId,
+    dayOfWeek: row.dayOfWeek,
+    startMinutes: row.startMinutes,
+    endMinutes: row.endMinutes,
+  };
+}
+
+function toPatient(row: PatientRow): Patient {
+  return {
+    id: row.id,
+    phone: row.phone,
+    name: row.name,
+    consentAt: row.consentAt,
+  };
+}
+
+function toAppointment(row: AppointmentRow): Appointment {
+  return {
+    id: row.id,
+    doctorId: row.doctorId,
+    patientId: row.patientId,
+    start: row.start,
+    end: row.end,
+    status: toStatus(row.status),
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
+type StaffRow = {
+  id: string;
+  email: string;
+  passwordHash: string;
+  name: string;
+  role: string;
+  active: boolean;
+};
+
+function toStaff(row: StaffRow): Staff {
+  return {
+    id: row.id,
+    email: row.email,
+    passwordHash: row.passwordHash,
+    name: row.name,
+    role: toStaffRole(row.role),
+    active: row.active,
+  };
+}
+
+function toEvent(row: EventRow): AppointmentEvent {
+  return {
+    id: row.id,
+    appointmentId: row.appointmentId,
+    type: toEventType(row.type),
+    at: row.at,
+    metadata:
+      row.metadata === null
+        ? null
+        : (row.metadata as unknown as Record<string, unknown>),
+  };
+}
+
+export class PrismaRepository implements Repository, StaffRepository {
+  constructor(private readonly db: PrismaDb) {}
+
+  async getDoctor(id: string): Promise<Doctor | null> {
+    const row = await this.db.doctor.findUnique({ where: { id } });
+    return row ? toDoctor(row) : null;
+  }
+
+  async listDoctors(): Promise<Doctor[]> {
+    const rows = await this.db.doctor.findMany({ orderBy: { name: "asc" } });
+    return rows.map(toDoctor);
+  }
+
+  async createDoctor(input: CreateDoctorInput): Promise<Doctor> {
+    const row = await this.db.doctor.create({ data: input });
+    return toDoctor(row);
+  }
+
+  async updateDoctor(id: string, patch: UpdateDoctorInput): Promise<Doctor> {
+    const row = await this.db.doctor.update({
+      where: { id },
+      data: {
+        ...(patch.name !== undefined ? { name: patch.name } : {}),
+        ...(patch.department !== undefined
+          ? { department: patch.department }
+          : {}),
+        ...(patch.slotDurationMinutes !== undefined
+          ? { slotDurationMinutes: patch.slotDurationMinutes }
+          : {}),
+      },
+    });
+    return toDoctor(row);
+  }
+
+  async getPatient(id: string): Promise<Patient | null> {
+    const row = await this.db.patient.findUnique({ where: { id } });
+    return row ? toPatient(row) : null;
+  }
+
+  async getPatientByPhone(phone: string): Promise<Patient | null> {
+    const row = await this.db.patient.findUnique({ where: { phone } });
+    return row ? toPatient(row) : null;
+  }
+
+  async createPatient(input: CreatePatientInput): Promise<Patient> {
+    const row = await this.db.patient.create({
+      data: {
+        phone: input.phone,
+        name: input.name,
+        consentAt: input.consentAt,
+      },
+    });
+    return toPatient(row);
+  }
+
+  async listAvailability(doctorId: string): Promise<Availability[]> {
+    const rows = await this.db.availability.findMany({
+      where: { doctorId },
+      orderBy: [{ dayOfWeek: "asc" }, { startMinutes: "asc" }],
+    });
+    return rows.map(toAvailability);
+  }
+
+  async createAvailability(
+    input: CreateAvailabilityInput,
+  ): Promise<Availability> {
+    const row = await this.db.availability.create({ data: input });
+    return toAvailability(row);
+  }
+
+  async replaceAvailability(
+    doctorId: string,
+    entries: AvailabilityDraft[],
+  ): Promise<Availability[]> {
+    await this.db.availability.deleteMany({ where: { doctorId } });
+    if (entries.length > 0) {
+      await this.db.availability.createMany({
+        data: entries.map((e) => ({ doctorId, ...e })),
+      });
+    }
+    const rows = await this.db.availability.findMany({
+      where: { doctorId },
+      orderBy: [{ dayOfWeek: "asc" }, { startMinutes: "asc" }],
+    });
+    return rows.map(toAvailability);
+  }
+
+  // --- StaffRepository ---------------------------------------------------
+  async getStaffById(id: string): Promise<Staff | null> {
+    const row = await this.db.staff.findUnique({ where: { id } });
+    return row ? toStaff(row) : null;
+  }
+
+  async getStaffByEmail(email: string): Promise<Staff | null> {
+    const row = await this.db.staff.findUnique({ where: { email } });
+    return row ? toStaff(row) : null;
+  }
+
+  async createStaff(input: CreateStaffInput): Promise<Staff> {
+    const row = await this.db.staff.create({
+      data: {
+        email: input.email,
+        passwordHash: input.passwordHash,
+        name: input.name,
+        role: input.role,
+        active: input.active ?? true,
+      },
+    });
+    return toStaff(row);
+  }
+
+  async getAppointment(id: string): Promise<Appointment | null> {
+    const row = await this.db.appointment.findUnique({ where: { id } });
+    return row ? toAppointment(row) : null;
+  }
+
+  async listAppointments(query: ListAppointmentsQuery): Promise<Appointment[]> {
+    const rows = await this.db.appointment.findMany({
+      where: {
+        doctorId: query.doctorId,
+        start: { gte: query.from, lt: query.to },
+        ...(query.statuses ? { status: { in: query.statuses } } : {}),
+      },
+      orderBy: { start: "asc" },
+    });
+    return rows.map(toAppointment);
+  }
+
+  async listAppointmentViews(
+    query: AppointmentViewQuery,
+  ): Promise<AppointmentView[]> {
+    const rows = await this.db.appointment.findMany({
+      where: {
+        start: { gte: query.from, lt: query.to },
+        ...(query.doctorId ? { doctorId: query.doctorId } : {}),
+      },
+      orderBy: { start: "asc" },
+      include: { doctor: true, patient: true },
+    });
+    return rows.map((row) => ({
+      id: row.id,
+      doctorId: row.doctorId,
+      patientId: row.patientId,
+      start: row.start,
+      end: row.end,
+      status: toStatus(row.status),
+      createdAt: row.createdAt,
+      doctorName: row.doctor.name,
+      department: row.doctor.department,
+      patientName: row.patient.name,
+      patientPhone: row.patient.phone,
+    }));
+  }
+
+  async listUpcomingAppointmentsForPatient(
+    patientId: string,
+    from: Date,
+  ): Promise<Appointment[]> {
+    const rows = await this.db.appointment.findMany({
+      where: {
+        patientId,
+        status: Status.BOOKED,
+        start: { gte: from },
+      },
+      orderBy: { start: "asc" },
+    });
+    return rows.map(toAppointment);
+  }
+
+  async listBookedBetween(from: Date, to: Date): Promise<Appointment[]> {
+    const rows = await this.db.appointment.findMany({
+      where: { status: Status.BOOKED, start: { gt: from, lte: to } },
+      orderBy: { start: "asc" },
+    });
+    return rows.map(toAppointment);
+  }
+
+  async recordNotificationOnce(
+    appointmentId: string,
+    kind: string,
+  ): Promise<boolean> {
+    try {
+      await this.db.notification.create({ data: { appointmentId, kind } });
+      return true;
+    } catch (err) {
+      // Unique (appointmentId, kind) violation -> already recorded.
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === "P2002"
+      ) {
+        return false;
+      }
+      throw err;
+    }
+  }
+
+  async deleteNotifications(
+    appointmentId: string,
+    kinds: string[],
+  ): Promise<void> {
+    await this.db.notification.deleteMany({
+      where: { appointmentId, kind: { in: kinds } },
+    });
+  }
+
+  async findBookedSlot(
+    doctorId: string,
+    start: Date,
+  ): Promise<Appointment | null> {
+    const row = await this.db.appointment.findFirst({
+      where: { doctorId, start, status: Status.BOOKED },
+    });
+    return row ? toAppointment(row) : null;
+  }
+
+  async createAppointment(
+    input: CreateAppointmentInput,
+  ): Promise<Appointment> {
+    const row = await this.db.appointment.create({
+      data: {
+        doctorId: input.doctorId,
+        patientId: input.patientId,
+        start: input.start,
+        end: input.end,
+        status: input.status,
+      },
+    });
+    return toAppointment(row);
+  }
+
+  async updateAppointment(
+    id: string,
+    patch: UpdateAppointmentInput,
+  ): Promise<Appointment> {
+    const row = await this.db.appointment.update({
+      where: { id },
+      data: {
+        ...(patch.start ? { start: patch.start } : {}),
+        ...(patch.end ? { end: patch.end } : {}),
+        ...(patch.status ? { status: patch.status } : {}),
+      },
+    });
+    return toAppointment(row);
+  }
+
+  async appendEvent(input: AppendEventInput): Promise<AppointmentEvent> {
+    const row = await this.db.appointmentEvent.create({
+      data: {
+        appointmentId: input.appointmentId,
+        type: input.type,
+        metadata:
+          input.metadata === null
+            ? Prisma.DbNull
+            : (input.metadata as Prisma.InputJsonValue),
+      },
+    });
+    return toEvent(row);
+  }
+
+  async listEvents(appointmentId: string): Promise<AppointmentEvent[]> {
+    const rows = await this.db.appointmentEvent.findMany({
+      where: { appointmentId },
+      orderBy: { at: "asc" },
+    });
+    return rows.map(toEvent);
+  }
+
+  async transaction<T>(fn: (repo: Repository) => Promise<T>): Promise<T> {
+    const db = this.db;
+    if ("$transaction" in db) {
+      return db.$transaction((tx) => fn(new PrismaRepository(tx)));
+    }
+    // Already inside a transaction — reuse the current client.
+    return fn(this);
+  }
+}

@@ -1,0 +1,107 @@
+// Prisma schema for receptionone.ai.
+// Status is stored as a String and mapped to the AppointmentStatus union at the
+// PrismaRepository boundary. AppointmentEvent is append-only (insert + read only).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL") // Neon pooled (pgbouncer)
+  directUrl = env("DIRECT_URL") // Neon non-pooled, for migrations
+}
+
+model Staff {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  role         String // ADMIN | RECEPTIONIST
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Conversation {
+  id        String   @id @default(cuid())
+  phone     String   @unique // E.164
+  state     String // ConversationState step name
+  context   Json // in-progress booking context (action, doctorId, offered options…)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Doctor {
+  id                  String         @id @default(cuid())
+  name                String
+  department          String
+  slotDurationMinutes Int
+  availability        Availability[]
+  appointments        Appointment[]
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+}
+
+model Availability {
+  id           String @id @default(cuid())
+  doctorId     String
+  doctor       Doctor @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  dayOfWeek    Int // 0=Sun .. 6=Sat
+  startMinutes Int // minutes from midnight (UTC)
+  endMinutes   Int
+
+  @@index([doctorId, dayOfWeek])
+}
+
+model Patient {
+  id           String        @id @default(cuid())
+  phone        String        @unique // E.164
+  name         String
+  consentAt    DateTime?
+  appointments Appointment[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+}
+
+model Appointment {
+  id        String             @id @default(cuid())
+  doctorId  String
+  doctor    Doctor             @relation(fields: [doctorId], references: [id])
+  patientId String
+  patient   Patient            @relation(fields: [patientId], references: [id])
+  start         DateTime // UTC
+  end           DateTime // UTC
+  status        String // BOOKED | CANCELLED | COMPLETED
+  events        AppointmentEvent[]
+  notifications Notification[]
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  @@index([doctorId, start])
+}
+
+model AppointmentEvent {
+  id            String      @id @default(cuid())
+  appointmentId String
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  type          String // BOOKED | RESCHEDULED | CANCELLED | COMPLETED
+  metadata      Json?
+  at            DateTime    @default(now())
+
+  @@index([appointmentId])
+}
+
+// Outbound notification ledger. The unique (appointmentId, kind) makes reminders
+// idempotent: the job claims a row before sending, so it sends at most once and
+// is safe to re-run. Confirmations are sent inline and not recorded here.
+model Notification {
+  id            String      @id @default(cuid())
+  appointmentId String
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  kind          String // REMINDER_24H | REMINDER_2H
+  sentAt        DateTime    @default(now())
+
+  @@unique([appointmentId, kind])
+  @@index([appointmentId])
+}

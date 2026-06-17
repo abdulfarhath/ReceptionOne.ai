@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+*.tsbuildinfo
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Local databases
+*.db
+
+# Prisma generated client
+api/src/generated/
+
+# Logs & OS noise
+*.log
+.DS_Store
