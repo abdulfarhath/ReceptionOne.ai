@@ -71,6 +71,28 @@ export class NotificationService {
     await this.channel.sendText(patient.phone, message);
   }
 
+  /** Send an alert to the doctor for a new booking, reschedule, or cancellation. */
+  async notifyDoctor(
+    appointment: Appointment,
+    kind: ConfirmationKind,
+  ): Promise<void> {
+    const doctor = await this.repo.getDoctor(appointment.doctorId);
+    if (!doctor || !doctor.phone) return;
+
+    const patient = await this.repo.getPatient(appointment.patientId);
+    const patientName = patient?.name ?? "A patient";
+    const when = istDateTime.format(appointment.start);
+
+    const message =
+      kind === "booked"
+        ? `New booking alert: ${patientName} has booked an appointment for ${when}.`
+        : kind === "rescheduled"
+          ? `Update: ${patientName} has rescheduled their appointment to ${when}.`
+          : `Cancellation: ${patientName} has cancelled their appointment for ${when}.`;
+
+    await this.channel.sendText(doctor.phone, message);
+  }
+
   /**
    * One reminder pass: send a 24h reminder to appointments 2–24h away and a 2h
    * reminder to those within 2h. Idempotent and safe to re-run (each kind is

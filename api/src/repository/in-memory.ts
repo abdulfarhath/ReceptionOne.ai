@@ -82,6 +82,7 @@ export class InMemoryRepository implements Repository, StaffRepository {
     const updated: Doctor = {
       ...existing,
       ...(patch.name !== undefined ? { name: patch.name } : {}),
+      ...(patch.phone !== undefined ? { phone: patch.phone } : {}),
       ...(patch.department !== undefined
         ? { department: patch.department }
         : {}),

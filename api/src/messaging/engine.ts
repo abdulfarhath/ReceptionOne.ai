@@ -22,6 +22,7 @@ import {
   type ConversationRecord,
   type ConversationStore,
 } from "./conversation.js";
+import type { NotificationService } from "./notifications.js";
 
 const DAY_MS = 86_400_000;
 const SLOT_LOOKAHEAD_DAYS = 14;
@@ -71,6 +72,7 @@ export interface ConversationEngineDeps {
   scheduling: SchedulingService;
   channel: ChannelAdapter;
   store: ConversationStore;
+  notifications?: NotificationService;
   clock?: Clock;
 }
 
@@ -79,6 +81,7 @@ export class ConversationEngine {
   private readonly scheduling: SchedulingService;
   private readonly channel: ChannelAdapter;
   private readonly store: ConversationStore;
+  private readonly notifications: NotificationService | undefined;
   private readonly clock: Clock;
 
   constructor(deps: ConversationEngineDeps) {
@@ -86,6 +89,7 @@ export class ConversationEngine {
     this.scheduling = deps.scheduling;
     this.channel = deps.channel;
     this.store = deps.store;
+    this.notifications = deps.notifications;
     this.clock = deps.clock ?? systemClock;
   }
 
@@ -142,7 +146,7 @@ export class ConversationEngine {
     if (choice === 1) {
       await this.channel.sendText(
         record.phone,
-        "Please call 911 (or your local emergency number) immediately, or visit the nearest emergency room.\n\nFor our clinic reception, call +1-800-CLINIC-URGENT.",
+        "Please call 108 (or your local emergency number) immediately, or visit the nearest emergency room.\n\nFor our clinic emergency reception, tap the number to call: +919059790014",
       );
       record.step = ConversationStep.DONE;
       await this.store.save(record);
@@ -442,6 +446,11 @@ export class ConversationEngine {
           patientId: patientId!,
           start: new Date(slotIso!),
         });
+        if (this.notifications) {
+          await this.notifications.notifyDoctor(appt, "booked").catch((err) => {
+            console.error("Failed to notify doctor:", err);
+          });
+        }
         await this.finish(
           record,
           `You're booked for ${istFormat.format(appt.start)}. See you then!`,
@@ -451,12 +460,22 @@ export class ConversationEngine {
           appointmentId: appointmentId!,
           newStart: new Date(slotIso!),
         });
+        if (this.notifications) {
+          await this.notifications.notifyDoctor(appt, "rescheduled").catch((err) => {
+            console.error("Failed to notify doctor:", err);
+          });
+        }
         await this.finish(
           record,
           `Done — your appointment is now ${istFormat.format(appt.start)}.`,
         );
       } else if (action === "cancel") {
-        await this.scheduling.cancel(appointmentId!);
+        const appt = await this.scheduling.cancel(appointmentId!);
+        if (this.notifications) {
+          await this.notifications.notifyDoctor(appt, "cancelled").catch((err) => {
+            console.error("Failed to notify doctor:", err);
+          });
+        }
         await this.finish(record, "Your appointment has been cancelled.");
       } else {
         await this.greet(record.phone);

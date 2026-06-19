@@ -35,6 +35,7 @@ export type AppointmentEventType =
 export interface Doctor {
   id: DoctorId;
   name: string;
+  phone?: string | null;
   department: string;
   /** Length of a single bookable slot, in minutes. */
   slotDurationMinutes: number;

@@ -13,6 +13,7 @@ import type {
 
 export interface CreateDoctorInput {
   name: string;
+  phone?: string | null;
   department: string;
   slotDurationMinutes: number;
 }
@@ -32,6 +33,7 @@ export interface CreatePatientInput {
 
 export interface UpdateDoctorInput {
   name?: string;
+  phone?: string | null;
   department?: string;
   slotDurationMinutes?: number;
 }

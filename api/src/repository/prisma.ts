@@ -60,6 +60,7 @@ function toEventType(value: string): AppointmentEventType {
 type DoctorRow = {
   id: string;
   name: string;
+  phone: string | null;
   department: string;
   slotDurationMinutes: number;
 };
@@ -98,6 +99,7 @@ function toDoctor(row: DoctorRow): Doctor {
   return {
     id: row.id,
     name: row.name,
+    phone: row.phone,
     department: row.department,
     slotDurationMinutes: row.slotDurationMinutes,
   };
@@ -191,6 +193,7 @@ export class PrismaRepository implements Repository, StaffRepository {
       where: { id },
       data: {
         ...(patch.name !== undefined ? { name: patch.name } : {}),
+        ...(patch.phone !== undefined ? { phone: patch.phone } : {}),
         ...(patch.department !== undefined
           ? { department: patch.department }
           : {}),

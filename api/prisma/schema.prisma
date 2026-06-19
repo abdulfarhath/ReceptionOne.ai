@@ -35,6 +35,7 @@ model Conversation {
 model Doctor {
   id                  String         @id @default(cuid())
   name                String
+  phone               String?
   department          String
   slotDurationMinutes Int
   availability        Availability[]

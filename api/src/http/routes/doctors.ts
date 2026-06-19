@@ -8,8 +8,17 @@ import type { AppDeps } from "../deps.js";
 import type { UpdateDoctorInput } from "../../repository/repository.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 
+const phoneSchema = z.string().min(1).transform(val => {
+  let cleaned = val.replace(/[\s\(\)-]/g, "");
+  if (cleaned.length === 10 && /^\d+$/.test(cleaned)) {
+    cleaned = `+91${cleaned}`;
+  }
+  return cleaned;
+});
+
 const createDoctorSchema = z.object({
   name: z.string().min(1),
+  phone: phoneSchema.optional().nullable(),
   department: z.string().min(1),
   slotDurationMinutes: z.number().int().positive().max(480),
 });
@@ -17,6 +26,7 @@ const createDoctorSchema = z.object({
 const updateDoctorSchema = z
   .object({
     name: z.string().min(1).optional(),
+    phone: phoneSchema.optional().nullable(),
     department: z.string().min(1).optional(),
     slotDurationMinutes: z.number().int().positive().max(480).optional(),
   })
@@ -71,6 +81,7 @@ export function doctorsRouter(deps: AppDeps): Router {
       const body = updateDoctorSchema.parse(req.body);
       const patch: UpdateDoctorInput = {};
       if (body.name !== undefined) patch.name = body.name;
+      if (body.phone !== undefined) patch.phone = body.phone;
       if (body.department !== undefined) patch.department = body.department;
       if (body.slotDurationMinutes !== undefined) {
         patch.slotDurationMinutes = body.slotDurationMinutes;

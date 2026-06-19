@@ -11,13 +11,14 @@ import { InMemoryRepository } from "../repository/in-memory.js";
 import { ConversationEngine } from "./engine.js";
 import { InMemoryConversationStore } from "./conversation-store.js";
 import { MockChannelAdapter } from "./mock-channel.js";
+import { NotificationService } from "./notifications.js";
 
 const DEMO_PHONE = "+910000000001";
 
 function seedRepo(): InMemoryRepository {
   const repo = new InMemoryRepository();
   const doctors = [
-    { id: "demo-asha", name: "Dr. Asha Rao", department: "General Medicine", slotDurationMinutes: 30 },
+    { id: "demo-asha", name: "Dr. Asha Rao", phone: "+910000000002", department: "General Medicine", slotDurationMinutes: 30 },
     { id: "demo-vikram", name: "Dr. Vikram Singh", department: "Pediatrics", slotDurationMinutes: 20 },
   ];
   for (const d of doctors) {
@@ -41,11 +42,13 @@ async function main(): Promise<void> {
   const channel = new MockChannelAdapter((line) => {
     process.stdout.write(`\n🤖 Clinic: ${line.replace(/\n/g, "\n           ")}\n\n`);
   });
+  const notifications = new NotificationService({ repo, channel });
   const engine = new ConversationEngine({
     repo,
     scheduling: new SchedulingService(repo),
     channel,
     store: new InMemoryConversationStore(),
+    notifications,
   });
 
   process.stdout.write(

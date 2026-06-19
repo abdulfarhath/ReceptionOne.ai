@@ -50,6 +50,7 @@ const engine = new ConversationEngine({
   scheduling,
   channel,
   store: new PrismaConversationStore(prisma),
+  notifications,
 });
 
 const messaging: MessagingDeps = {

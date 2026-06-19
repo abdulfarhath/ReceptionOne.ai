@@ -6,6 +6,7 @@ import { InMemoryRepository } from "../repository/in-memory.js";
 import { ConversationEngine } from "./engine.js";
 import { InMemoryConversationStore } from "./conversation-store.js";
 import { MockChannelAdapter } from "./mock-channel.js";
+import { NotificationService } from "./notifications.js";
 
 // 2026-01-05 is a Monday (UTC). Doctor works Mon 09:00–11:00 UTC -> 4 x 30min slots.
 const FIXED_NOW = new Date("2026-01-05T00:00:00.000Z");
@@ -19,6 +20,7 @@ function setup() {
   repo.addDoctor({
     id: "doc1",
     name: "Dr. Test",
+    phone: "+910000000003",
     department: "General",
     slotDurationMinutes: 30,
   });
@@ -32,7 +34,8 @@ function setup() {
   const scheduling = new SchedulingService(repo, clock);
   const channel = new MockChannelAdapter();
   const store = new InMemoryConversationStore();
-  const engine = new ConversationEngine({ repo, scheduling, channel, store, clock });
+  const notifications = new NotificationService({ repo, channel, clock });
+  const engine = new ConversationEngine({ repo, scheduling, channel, store, notifications, clock });
   return { repo, scheduling, channel, engine };
 }
 
