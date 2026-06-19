@@ -20,8 +20,14 @@ export function createChannelFromEnv(
   const from = process.env.TWILIO_WHATSAPP_FROM;
 
   if (accountSid && authToken && from) {
+    const messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID;
     return {
-      channel: new TwilioWhatsAppChannelAdapter({ accountSid, authToken, from }),
+      channel: new TwilioWhatsAppChannelAdapter({
+        accountSid,
+        authToken,
+        from,
+        ...(messagingServiceSid ? { messagingServiceSid } : {}),
+      }),
       usingTwilio: true,
       twilioAuthToken: authToken,
     };

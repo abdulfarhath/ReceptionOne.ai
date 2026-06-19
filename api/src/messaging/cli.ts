@@ -2,7 +2,7 @@
 // print to the console via the Mock channel. No Twilio, no database.
 //
 //   npm run chat
-//   # or scripted:  printf '1\nRiya Sharma\n1\n1\n1\n' | npm run chat
+//   # or scripted (2 = no emergency):  printf '2\n1\nRiya Sharma\n1\n1\n1\n' | npm run chat
 
 import * as readline from "node:readline";
 

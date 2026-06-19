@@ -3,6 +3,7 @@
 
 export const ConversationStep = {
   GREET: "GREET",
+  CHECK_EMERGENCY: "CHECK_EMERGENCY",
   CHOOSE_ACTION: "CHOOSE_ACTION",
   ASK_NAME: "ASK_NAME",
   CHOOSE_DOCTOR: "CHOOSE_DOCTOR",
@@ -14,7 +15,14 @@ export const ConversationStep = {
 export type ConversationStep =
   (typeof ConversationStep)[keyof typeof ConversationStep];
 
-export type ConversationAction = "book" | "reschedule" | "cancel";
+export type ConversationAction =
+  | "book"
+  | "reschedule"
+  | "cancel"
+  | "view_appointments"
+  | "our_doctors"
+  | "about_hospital"
+  | "talk_receptionist";
 
 /** In-progress booking context. Offered* arrays map a 1-based reply to an id/slot. */
 export interface ConversationContext {

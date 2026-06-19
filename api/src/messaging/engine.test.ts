@@ -47,8 +47,14 @@ describe("ConversationEngine", () => {
     env = setup();
   });
 
+  it("handles emergency flow", async () => {
+    expect(await say("hi")).toMatch(/emergency/i);
+    expect(await say("1")).toMatch(/911|emergency room/i); // Yes
+  });
+
   it("books an appointment end to end", async () => {
-    expect(await say("hi")).toContain("Book an appointment");
+    expect(await say("hi")).toMatch(/emergency/i);
+    expect(await say("2")).toContain("Book an appointment"); // No
     expect(await say("1")).toMatch(/name/i); // new patient -> ask name
     expect(await say("Riya Sharma")).toContain("Dr. Test"); // doctor list
     const slots = await say("1"); // choose doctor -> slot list
@@ -70,6 +76,7 @@ describe("ConversationEngine", () => {
 
   it("rejects booking a slot that was taken after it was offered", async () => {
     await say("hi");
+    await say("2"); // No to emergency
     await say("1");
     await say("Riya Sharma");
     await say("1"); // doctor chosen, slots offered (option 1 = 09:00)
@@ -111,6 +118,7 @@ describe("ConversationEngine", () => {
     });
 
     await say("hi");
+    await say("2"); // No to emergency
     expect(await say("2")).toMatch(/which appointment/i); // reschedule -> list
     await say("1"); // pick the appointment -> slots (09:00 now free again is excluded? it's the user's own booked slot)
     await say("1"); // pick the first offered new slot
@@ -138,6 +146,7 @@ describe("ConversationEngine", () => {
     });
 
     await say("hi");
+    await say("2"); // No to emergency
     expect(await say("3")).toMatch(/which appointment/i); // cancel -> list
     expect(await say("1")).toMatch(/cancel/i); // confirm prompt
     expect(await say("1")).toMatch(/cancelled/i); // confirmed
@@ -153,6 +162,7 @@ describe("ConversationEngine", () => {
 
   it("re-prompts on invalid input", async () => {
     await say("hi");
-    expect(await say("9")).toMatch(/didn't catch|number/i);
+    await say("2"); // No to emergency
+    expect(await say("9")).toMatch(/didn't catch|tap one of the options/i);
   });
 });

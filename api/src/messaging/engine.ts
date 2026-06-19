@@ -2,12 +2,20 @@
 // It NEVER decides availability or writes appointments itself — every check and
 // write goes through SchedulingService. It only formats options and parses the
 // patient's numbered replies.
+//
+// Interactive messages: uses sendButtons (≤3 choices) or sendList (4+) so that
+// WhatsApp renders tappable UI elements instead of plain numbered text.
 
 import { DomainError } from "../domain/errors.js";
 import type { Clock } from "../domain/scheduling.js";
 import { SchedulingService } from "../domain/scheduling.js";
 import type { Repository } from "../repository/repository.js";
-import type { ChannelAdapter, InboundMessage } from "./channel.js";
+import type {
+  ChannelAdapter,
+  InboundMessage,
+  InteractiveButton,
+  ListItem,
+} from "./channel.js";
 import {
   ConversationStep,
   type ConversationAction,
@@ -43,8 +51,20 @@ const ACTION_OPTIONS = [
   "Book an appointment",
   "Reschedule an appointment",
   "Cancel an appointment",
+  "View my appointments",
+  "Our Doctors",
+  "About the Hospital",
+  "Talk to Receptionist",
 ];
-const ACTIONS: ConversationAction[] = ["book", "reschedule", "cancel"];
+const ACTIONS: ConversationAction[] = [
+  "book",
+  "reschedule",
+  "cancel",
+  "view_appointments",
+  "our_doctors",
+  "about_hospital",
+  "talk_receptionist",
+];
 
 export interface ConversationEngineDeps {
   repo: Repository;
@@ -80,6 +100,8 @@ export class ConversationEngine {
     }
 
     switch (record.step) {
+      case ConversationStep.CHECK_EMERGENCY:
+        return this.onCheckEmergency(record, inbound);
       case ConversationStep.CHOOSE_ACTION:
         return this.onChooseAction(record, inbound);
       case ConversationStep.ASK_NAME:
@@ -101,14 +123,43 @@ export class ConversationEngine {
   private async greet(phone: string): Promise<void> {
     await this.store.save({
       phone,
-      step: ConversationStep.CHOOSE_ACTION,
+      step: ConversationStep.CHECK_EMERGENCY,
       context: {},
     });
-    await this.channel.sendOptions(
+    // 2 options → quick-reply buttons
+    await this.channel.sendButtons(
       phone,
-      "Hi! I'm the clinic booking assistant. Reply with a number to choose — send 'menu' anytime to start over.",
-      ACTION_OPTIONS,
+      "Are you experiencing a medical emergency?",
+      this.toButtons(["Yes, it's an emergency", "No"]),
     );
+  }
+
+  private async onCheckEmergency(
+    record: ConversationRecord,
+    inbound: InboundMessage,
+  ): Promise<void> {
+    const choice = inbound.choiceIndex;
+    if (choice === 1) {
+      await this.channel.sendText(
+        record.phone,
+        "Please call 911 (or your local emergency number) immediately, or visit the nearest emergency room.\n\nFor our clinic reception, call +1-800-CLINIC-URGENT.",
+      );
+      record.step = ConversationStep.DONE;
+      await this.store.save(record);
+      return;
+    }
+    if (choice === 2) {
+      record.step = ConversationStep.CHOOSE_ACTION;
+      await this.store.save(record);
+      await this.sendInteractive(
+        record.phone,
+        "Hi! I'm the clinic booking assistant. Tap 'Main Menu' below to see what I can do for you — send 'menu' anytime to start over.",
+        ACTION_OPTIONS,
+        "Main Menu",
+      );
+      return;
+    }
+    return this.repromptList(record.phone);
   }
 
   private async onChooseAction(
@@ -121,6 +172,29 @@ export class ConversationEngine {
     }
     const action = ACTIONS[choice - 1]!;
     record.context = { action };
+
+    if (action === "about_hospital") {
+      return this.finish(
+        record,
+        "We are ReceptionSync Clinic, providing top-notch healthcare services. We are open Monday to Saturday, 9 AM to 7 PM. Located at 123 Health Ave."
+      );
+    }
+
+    if (action === "talk_receptionist") {
+      return this.finish(
+        record,
+        "Our reception desk is available at +1-800-CLINIC during business hours. Please call us directly for immediate assistance."
+      );
+    }
+
+    if (action === "our_doctors") {
+      const doctors = await this.repo.listDoctors();
+      if (doctors.length === 0) {
+        return this.finish(record, "No doctors are currently listed.");
+      }
+      const text = doctors.map((d) => `• ${d.name} (${d.department})`).join("\n");
+      return this.finish(record, "Our Doctors:\n" + text);
+    }
 
     if (action === "book") {
       const patient = await this.repo.getPatientByPhone(record.phone);
@@ -138,7 +212,7 @@ export class ConversationEngine {
       return;
     }
 
-    // reschedule / cancel — needs an existing patient with upcoming appointments.
+    // reschedule / cancel / view appointments — needs an existing patient
     const patient = await this.repo.getPatientByPhone(record.phone);
     if (!patient) {
       await this.channel.sendText(
@@ -148,6 +222,23 @@ export class ConversationEngine {
       return this.greet(record.phone);
     }
     record.context.patientId = patient.id;
+
+    if (action === "view_appointments") {
+      const appts = await this.repo.listUpcomingAppointmentsForPatient(
+        patient.id,
+        this.clock.now(),
+      );
+      if (appts.length === 0) {
+        return this.finish(record, "You have no upcoming appointments.");
+      }
+      const lines = [];
+      for (const a of appts) {
+        const doc = await this.repo.getDoctor(a.doctorId);
+        lines.push(`• ${doc?.name ?? "Doctor"} on ${istFormat.format(a.start)}`);
+      }
+      return this.finish(record, "Your upcoming appointments:\n" + lines.join("\n"));
+    }
+
     return this.startChooseAppointment(record);
   }
 
@@ -182,10 +273,12 @@ export class ConversationEngine {
     record.context.offeredDoctorIds = doctors.map((d) => d.id);
     record.step = ConversationStep.CHOOSE_DOCTOR;
     await this.store.save(record);
-    await this.channel.sendOptions(
+    const labels = doctors.map((d) => `${d.name} — ${d.department}`);
+    await this.sendInteractive(
       record.phone,
       "Which doctor would you like to see?",
-      doctors.map((d) => `${d.name} — ${d.department}`),
+      labels,
+      "Choose Doctor",
     );
   }
 
@@ -215,10 +308,12 @@ export class ConversationEngine {
     record.context.offeredSlotsIso = slots.map((s) => s.toISOString());
     record.step = ConversationStep.CHOOSE_SLOT;
     await this.store.save(record);
-    await this.channel.sendOptions(
+    const labels = slots.map((s) => istFormat.format(s));
+    await this.sendInteractive(
       record.phone,
       "Here are the next available times:",
-      slots.map((s) => istFormat.format(s)),
+      labels,
+      "Pick a Time",
     );
   }
 
@@ -241,10 +336,11 @@ export class ConversationEngine {
       : null;
     const verb =
       record.context.action === "reschedule" ? "Move to" : "Book";
-    await this.channel.sendOptions(
+    // 2 options → quick-reply buttons
+    await this.channel.sendButtons(
       record.phone,
       `${verb} ${doctor ? doctor.name + " on " : ""}${istFormat.format(slot)}?`,
-      ["Yes, confirm", "No, back to menu"],
+      this.toButtons(["Yes, confirm", "No, back to menu"]),
     );
   }
 
@@ -274,10 +370,11 @@ export class ConversationEngine {
     record.step = ConversationStep.CHOOSE_APPOINTMENT;
     await this.store.save(record);
     const verb = record.context.action === "cancel" ? "cancel" : "reschedule";
-    await this.channel.sendOptions(
+    await this.sendInteractive(
       record.phone,
       `Which appointment would you like to ${verb}?`,
       labels,
+      "Choose Appt",
     );
   }
 
@@ -307,10 +404,11 @@ export class ConversationEngine {
       record.step = ConversationStep.CONFIRM;
       await this.store.save(record);
       const doctor = await this.repo.getDoctor(appt.doctorId);
-      await this.channel.sendOptions(
+      // 2 options → quick-reply buttons
+      await this.channel.sendButtons(
         record.phone,
         `Cancel your appointment with ${doctor?.name ?? "the doctor"} on ${istFormat.format(appt.start)}?`,
-        ["Yes, cancel it", "No, keep it"],
+        this.toButtons(["Yes, cancel it", "No, keep it"]),
       );
       return;
     }
@@ -412,8 +510,41 @@ export class ConversationEngine {
   private repromptList(phone: string): Promise<void> {
     return this.channel.sendText(
       phone,
-      "Sorry, I didn't catch that. Please reply with one of the numbers above, or send 'menu' to start over.",
+      "Sorry, I didn't catch that. Please tap one of the options above, or send 'menu' to start over.",
     );
+  }
+
+  /**
+   * Pick the right interactive format based on option count:
+   *   ≤3 → sendButtons (quick-reply, tappable inline)
+   *   4+ → sendList   (list-picker, scrollable menu)
+   */
+  private async sendInteractive(
+    to: string,
+    body: string,
+    labels: string[],
+    listButtonLabel: string,
+  ): Promise<void> {
+    if (labels.length <= 3) {
+      await this.channel.sendButtons(to, body, this.toButtons(labels));
+    } else {
+      await this.channel.sendList(
+        to,
+        body,
+        listButtonLabel,
+        this.toListItems(labels),
+      );
+    }
+  }
+
+  /** Convert string labels into InteractiveButton[]. IDs are 1-based. */
+  private toButtons(labels: string[]): InteractiveButton[] {
+    return labels.map((title, i) => ({ id: String(i + 1), title }));
+  }
+
+  /** Convert string labels into ListItem[]. IDs are 1-based. */
+  private toListItems(labels: string[]): ListItem[] {
+    return labels.map((title, i) => ({ id: String(i + 1), title }));
   }
 
   private async upcomingSlots(doctorId: string): Promise<Date[]> {

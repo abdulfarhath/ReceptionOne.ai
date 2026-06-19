@@ -2,10 +2,14 @@
 // optionally logged). Inbound payloads are plain { from, text } objects.
 
 import {
+  formatButtons,
+  formatList,
   formatOptions,
   parseChoiceIndex,
   type ChannelAdapter,
   type InboundMessage,
+  type InteractiveButton,
+  type ListItem,
 } from "./channel.js";
 
 export interface SentMessage {
@@ -19,6 +23,27 @@ export class MockChannelAdapter implements ChannelAdapter {
   constructor(private readonly log: (line: string) => void = () => {}) {}
 
   async sendText(to: string, text: string): Promise<void> {
+    this.outbox.push({ to, text });
+    this.log(text);
+  }
+
+  async sendButtons(
+    to: string,
+    body: string,
+    buttons: InteractiveButton[],
+  ): Promise<void> {
+    const text = formatButtons(body, buttons);
+    this.outbox.push({ to, text });
+    this.log(text);
+  }
+
+  async sendList(
+    to: string,
+    body: string,
+    buttonLabel: string,
+    items: ListItem[],
+  ): Promise<void> {
+    const text = formatList(body, buttonLabel, items);
     this.outbox.push({ to, text });
     this.log(text);
   }
