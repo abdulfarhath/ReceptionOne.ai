@@ -4,8 +4,10 @@ import pino, { type LoggerOptions } from "pino";
 import { SchedulingService } from "./domain/scheduling.js";
 import { createApp } from "./http/app.js";
 import type { AppConfig, MessagingDeps } from "./http/deps.js";
+import { startBroadcastDispatchJob } from "./jobs/broadcasts.js";
 import { startReminderJob } from "./jobs/reminders.js";
 import { createChannelFromEnv } from "./messaging/channel-factory.js";
+import { BroadcastService } from "./messaging/broadcasts.js";
 import { ConversationEngine } from "./messaging/engine.js";
 import { PrismaConversationStore } from "./messaging/conversation-store.js";
 import { NotificationService } from "./messaging/notifications.js";
@@ -45,6 +47,11 @@ const { channel, usingTwilio, twilioAuthToken } = createChannelFromEnv((line) =>
 logger.info(`WhatsApp channel: ${usingTwilio ? "Twilio" : "Mock"}`);
 
 const notifications = new NotificationService({ repo, channel });
+const broadcasts = new BroadcastService({
+  repo,
+  channel,
+  onError: (err) => logger.error({ err }, "broadcast dispatch failed"),
+});
 const engine = new ConversationEngine({
   repo,
   scheduling,
@@ -60,12 +67,18 @@ const messaging: MessagingDeps = {
   ...(process.env.PUBLIC_URL ? { publicUrl: process.env.PUBLIC_URL } : {}),
 };
 
-const app = createApp({ repo, config, logger, messaging, notifications });
+const app = createApp({ repo, config, logger, messaging, notifications, broadcasts });
 
 const port = Number(process.env.PORT ?? 3000);
 
 app.listen(port, () => {
   logger.info(`API listening on http://localhost:${port}`);
+});
+
+// Dispatch due scheduled broadcasts every minute (in-process for V1).
+startBroadcastDispatchJob(broadcasts, {
+  onDispatched: (count) => logger.info(`broadcasts dispatched: ${count}`),
+  onError: (err) => logger.error({ err }, "broadcast dispatch pass failed"),
 });
 
 // Run reminders in-process when enabled (or run the standalone worker separately).

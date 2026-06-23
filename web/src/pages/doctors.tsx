@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Plus } from "lucide-react";
+import { Link } from "react-router-dom";
+import { BarChart3, Plus } from "lucide-react";
 
 import { AvailabilityDialog } from "@/components/availability-dialog";
 import { DoctorFormDialog } from "@/components/doctor-form-dialog";
@@ -79,6 +80,7 @@ export function DoctorsPage() {
               <CardContent className="space-y-4">
                 <p className="text-sm text-muted-foreground">
                   {doctor.slotDurationMinutes}-minute slots
+                  {doctor.phone ? ` • ${doctor.phone}` : ""}
                 </p>
                 <div className="flex gap-2">
                   <Button
@@ -94,6 +96,12 @@ export function DoctorsPage() {
                     onClick={() => setHoursFor(doctor)}
                   >
                     Edit hours
+                  </Button>
+                  <Button variant="outline" size="sm" asChild>
+                    <Link to={`/doctors/${doctor.id}/insights`}>
+                      <BarChart3 className="size-4" aria-hidden />
+                      Insights
+                    </Link>
                   </Button>
                 </div>
               </CardContent>

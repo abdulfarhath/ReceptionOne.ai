@@ -7,20 +7,26 @@ import type {
   Appointment,
   AppointmentEvent,
   Availability,
+  Broadcast,
   Doctor,
   Patient,
 } from "../domain/types.js";
-import { AppointmentStatus } from "../domain/types.js";
+import { AppointmentStatus, BroadcastStatus } from "../domain/types.js";
 import type { Staff } from "../auth/staff.js";
 import type {
   AppendEventInput,
   AppointmentView,
   AppointmentViewQuery,
   AvailabilityDraft,
+  BroadcastStats,
   CreateAppointmentInput,
   CreateAvailabilityInput,
+  CreateBroadcastInput,
   CreateDoctorInput,
   CreatePatientInput,
+  ListBroadcastsQuery,
+  UpdateBroadcastInput,
+  UpdatePatientInput,
   ListAppointmentsQuery,
   Repository,
   UpdateAppointmentInput,
@@ -43,6 +49,7 @@ export class InMemoryRepository implements Repository, StaffRepository {
   private readonly events: AppointmentEvent[] = [];
   private readonly staff = new Map<string, Staff>();
   private readonly notifications = new Set<string>(); // `${appointmentId}::${kind}`
+  private readonly broadcasts = new Map<string, Broadcast>();
 
   // --- test/seed helpers -------------------------------------------------
   addDoctor(doctor: Doctor): Doctor {
@@ -104,16 +111,39 @@ export class InMemoryRepository implements Repository, StaffRepository {
     return found ? clone(found) : null;
   }
 
+  async listPatients(): Promise<Patient[]> {
+    return [...this.patients.values()]
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map(clone);
+  }
+
   async createPatient(input: CreatePatientInput): Promise<Patient> {
-    const patient: Patient = { id: randomUUID(), ...input };
+    const patient: Patient = { id: randomUUID(), language: input.language ?? "en", ...input };
     this.patients.set(patient.id, clone(patient));
     return clone(patient);
+  }
+
+  async updatePatient(id: string, patch: UpdatePatientInput): Promise<Patient> {
+    const existing = this.patients.get(id);
+    if (!existing) throw new Error(`Patient ${id} not found`);
+    const updated: Patient = {
+      ...existing,
+      ...(patch.name !== undefined ? { name: patch.name } : {}),
+      ...(patch.language !== undefined ? { language: patch.language } : {}),
+      ...(patch.consentAt !== undefined ? { consentAt: patch.consentAt } : {}),
+    };
+    this.patients.set(id, clone(updated));
+    return clone(updated);
   }
 
   async listAvailability(doctorId: string): Promise<Availability[]> {
     return this.availability
       .filter((a) => a.doctorId === doctorId)
       .map(clone);
+  }
+
+  async listAllAvailability(): Promise<Availability[]> {
+    return this.availability.map(clone);
   }
 
   async createAvailability(
@@ -210,6 +240,17 @@ export class InMemoryRepository implements Repository, StaffRepository {
     }
     views.sort((x, y) => x.start.getTime() - y.start.getTime());
     return views.map(clone);
+  }
+
+  async listAppointmentsForPatient(patientId: string): Promise<Appointment[]> {
+    return [...this.appointments.values()]
+      .filter((a) => a.patientId === patientId)
+      .sort((x, y) => y.start.getTime() - x.start.getTime()) // newest first
+      .map(clone);
+  }
+
+  async listAllAppointments(): Promise<Appointment[]> {
+    return [...this.appointments.values()].map(clone);
   }
 
   async listUpcomingAppointmentsForPatient(
@@ -326,6 +367,89 @@ export class InMemoryRepository implements Repository, StaffRepository {
     return this.events
       .filter((e) => e.appointmentId === appointmentId)
       .map(clone);
+  }
+
+  async createBroadcast(input: CreateBroadcastInput): Promise<Broadcast> {
+    const now = new Date();
+    const broadcast: Broadcast = {
+      id: randomUUID(),
+      ...input,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.broadcasts.set(broadcast.id, clone(broadcast));
+    return clone(broadcast);
+  }
+
+  async getBroadcast(id: string): Promise<Broadcast | null> {
+    const found = this.broadcasts.get(id);
+    return found ? clone(found) : null;
+  }
+
+  async listBroadcasts(query: ListBroadcastsQuery): Promise<Broadcast[]> {
+    const term = query.search?.trim().toLowerCase();
+    return [...this.broadcasts.values()]
+      .filter((b) => !query.category || b.category === query.category)
+      .filter((b) => !query.status || b.status === query.status)
+      .filter((b) => !query.priority || b.priority === query.priority)
+      .filter(
+        (b) =>
+          !term ||
+          b.title.toLowerCase().includes(term) ||
+          b.body.toLowerCase().includes(term),
+      )
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .map(clone);
+  }
+
+  async updateBroadcast(
+    id: string,
+    patch: UpdateBroadcastInput,
+  ): Promise<Broadcast> {
+    const existing = this.broadcasts.get(id);
+    if (!existing) throw new Error(`Broadcast ${id} not found`);
+    const updated: Broadcast = {
+      ...existing,
+      ...(patch.status !== undefined ? { status: patch.status } : {}),
+      ...(patch.sentAt !== undefined ? { sentAt: patch.sentAt } : {}),
+      ...(patch.recipientCount !== undefined
+        ? { recipientCount: patch.recipientCount }
+        : {}),
+      updatedAt: new Date(),
+    };
+    this.broadcasts.set(id, clone(updated));
+    return clone(updated);
+  }
+
+  async listDueBroadcasts(now: Date): Promise<Broadcast[]> {
+    const nowMs = now.getTime();
+    return [...this.broadcasts.values()]
+      .filter(
+        (b) =>
+          b.status === BroadcastStatus.SCHEDULED &&
+          b.scheduledAt !== null &&
+          b.scheduledAt.getTime() <= nowMs,
+      )
+      .sort(
+        (a, b) =>
+          (a.scheduledAt?.getTime() ?? 0) - (b.scheduledAt?.getTime() ?? 0),
+      )
+      .map(clone);
+  }
+
+  async broadcastStats(): Promise<BroadcastStats> {
+    let totalSent = 0;
+    let totalReached = 0;
+    let scheduled = 0;
+    for (const b of this.broadcasts.values()) {
+      if (b.status === BroadcastStatus.SENT) {
+        totalSent++;
+        totalReached += b.recipientCount;
+      } else if (b.status === BroadcastStatus.SCHEDULED) {
+        scheduled++;
+      }
+    }
+    return { totalSent, totalReached, scheduled };
   }
 
   async transaction<T>(fn: (repo: Repository) => Promise<T>): Promise<T> {

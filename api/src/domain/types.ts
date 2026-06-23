@@ -59,6 +59,7 @@ export interface Patient {
   /** E.164 phone number, unique across patients. */
   phone: string;
   name: string;
+  language?: string;
   /** When the patient consented to be messaged; null until captured. */
   consentAt: Date | null;
 }
@@ -84,4 +85,62 @@ export interface AppointmentEvent {
   at: Date;
   /** Optional structured context (e.g. previous start on reschedule). */
   metadata: Record<string, unknown> | null;
+}
+
+export type BroadcastId = string;
+
+/** Broadcast topic. Stored as a String column; validated at every edge. */
+export const BroadcastCategory = {
+  MARKETING: "MARKETING",
+  BOOTCAMP: "BOOTCAMP",
+  BLOOD_DONATION: "BLOOD_DONATION",
+  HEALTH_CAMP: "HEALTH_CAMP",
+  PROMOTION: "PROMOTION",
+  DOCTOR_UPDATE: "DOCTOR_UPDATE",
+  REMINDER: "REMINDER",
+  EMERGENCY_NOTICE: "EMERGENCY_NOTICE",
+  CUSTOM: "CUSTOM",
+} as const;
+export type BroadcastCategory =
+  (typeof BroadcastCategory)[keyof typeof BroadcastCategory];
+
+export const BroadcastPriority = {
+  LOW: "LOW",
+  NORMAL: "NORMAL",
+  HIGH: "HIGH",
+  URGENT: "URGENT",
+} as const;
+export type BroadcastPriority =
+  (typeof BroadcastPriority)[keyof typeof BroadcastPriority];
+
+/** SCHEDULED until dispatched; SENT once delivered to consented patients. */
+export const BroadcastStatus = {
+  SCHEDULED: "SCHEDULED",
+  SENT: "SENT",
+} as const;
+export type BroadcastStatus =
+  (typeof BroadcastStatus)[keyof typeof BroadcastStatus];
+
+/**
+ * A single message broadcast to all consented patients. `scheduledAt` null means
+ * it was sent immediately; `sentAt`/`recipientCount` are set on dispatch.
+ */
+export interface Broadcast {
+  id: BroadcastId;
+  title: string;
+  body: string;
+  category: BroadcastCategory;
+  priority: BroadcastPriority;
+  status: BroadcastStatus;
+  /** When it should go out; null for immediate sends. UTC. */
+  scheduledAt: Date | null;
+  /** When it was actually dispatched; null until then. UTC. */
+  sentAt: Date | null;
+  /** Number of consented patients messaged. */
+  recipientCount: number;
+  /** Staff member who created it. */
+  createdById: string;
+  createdByName: string;
+  createdAt: Date;
+  updatedAt: Date;
 }

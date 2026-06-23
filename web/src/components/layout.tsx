@@ -38,6 +38,9 @@ export function Layout({ children }: { children: ReactNode }) {
           <nav className="flex items-center gap-1" aria-label="Primary">
             <NavItem to="/" label="Appointments" />
             <NavItem to="/appointments/new" label="New" />
+            <NavItem to="/patients" label="Patients" />
+            <NavItem to="/broadcasts" label="Broadcasts" />
+            <NavItem to="/analytics" label="Analytics" />
             {isAdmin ? <NavItem to="/doctors" label="Doctors" /> : null}
           </nav>
           <div className="ml-auto flex items-center gap-3 text-sm">

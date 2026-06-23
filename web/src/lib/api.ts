@@ -3,19 +3,34 @@
 import type { z } from "zod";
 
 import {
+  analyticsSchema,
   appointmentSchema,
   appointmentViewSchema,
   availabilitySchema,
+  broadcastSchema,
+  broadcastStatsSchema,
+  doctorInsightsSchema,
   doctorSchema,
+  patientDetailSchema,
   patientLookupSchema,
   patientSchema,
+  patientsDirectorySchema,
   slotsResponseSchema,
   staffProfileSchema,
+  type Analytics,
   type Appointment,
   type AppointmentView,
   type Availability,
+  type Broadcast,
+  type BroadcastCategory,
+  type BroadcastPriority,
+  type BroadcastStats,
+  type BroadcastStatus,
   type Doctor,
+  type DoctorInsights,
   type Patient,
+  type PatientDetail,
+  type PatientSummary,
   type StaffProfile,
 } from "./schemas";
 
@@ -112,6 +127,7 @@ export function listDoctors(): Promise<Doctor[]> {
 
 export function createDoctor(input: {
   name: string;
+  phone?: string | null;
   department: string;
   slotDurationMinutes: number;
 }): Promise<Doctor> {
@@ -120,7 +136,7 @@ export function createDoctor(input: {
 
 export function updateDoctor(
   id: string,
-  patch: { name?: string; department?: string; slotDurationMinutes?: number },
+  patch: { name?: string; phone?: string | null; department?: string; slotDurationMinutes?: number },
 ): Promise<Doctor> {
   return request(`/api/doctors/${id}`, doctorSchema, {
     method: "PATCH",
@@ -147,6 +163,61 @@ export async function getSlots(doctorId: string, date: string): Promise<string[]
     query: { date },
   });
   return res.slots;
+}
+
+/** Monthly demand analytics for a doctor. `month` is "YYYY-MM" (default: current). */
+export function getDoctorInsights(
+  doctorId: string,
+  month?: string,
+): Promise<DoctorInsights> {
+  return request(`/api/doctors/${doctorId}/insights`, doctorInsightsSchema, {
+    query: { month },
+  });
+}
+
+// --- Analytics -----------------------------------------------------------
+/** The full operational analytics dashboard payload. */
+export function getAnalytics(): Promise<Analytics> {
+  return request("/api/analytics/dashboard", analyticsSchema);
+}
+
+// --- Broadcasts ----------------------------------------------------------
+export interface BroadcastFilters {
+  search?: string;
+  category?: BroadcastCategory;
+  status?: BroadcastStatus;
+  priority?: BroadcastPriority;
+}
+
+export function listBroadcasts(
+  filters: BroadcastFilters = {},
+): Promise<Broadcast[]> {
+  return request("/api/broadcasts", broadcastSchema.array(), {
+    query: {
+      search: filters.search?.trim() ? filters.search.trim() : undefined,
+      category: filters.category,
+      status: filters.status,
+      priority: filters.priority,
+    },
+  });
+}
+
+export function getBroadcastStats(): Promise<BroadcastStats> {
+  return request("/api/broadcasts/stats", broadcastStatsSchema);
+}
+
+export function createBroadcast(input: {
+  title: string;
+  body: string;
+  category: BroadcastCategory;
+  priority: BroadcastPriority;
+  /** ISO string to schedule for later; null/omitted sends immediately. */
+  scheduledAt?: string | null;
+}): Promise<Broadcast> {
+  return request("/api/broadcasts", broadcastSchema, {
+    method: "POST",
+    body: input,
+  });
 }
 
 // --- Appointments --------------------------------------------------------
@@ -201,4 +272,17 @@ export function createPatient(input: {
   consent: boolean;
 }): Promise<Patient> {
   return request("/api/patients", patientSchema, { method: "POST", body: input });
+}
+
+/** Patient directory with per-patient history counts. `q` filters name/phone. */
+export async function listPatients(q?: string): Promise<PatientSummary[]> {
+  const res = await request("/api/patients", patientsDirectorySchema, {
+    query: { q: q?.trim() ? q.trim() : undefined },
+  });
+  return res.patients;
+}
+
+/** A single patient's full appointment history + summary stats. */
+export function getPatientDetail(id: string): Promise<PatientDetail> {
+  return request(`/api/patients/${id}`, patientDetailSchema);
 }

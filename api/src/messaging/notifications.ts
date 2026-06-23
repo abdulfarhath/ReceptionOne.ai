@@ -7,6 +7,8 @@ import type { Clock } from "../domain/scheduling.js";
 import type { Appointment } from "../domain/types.js";
 import type { Repository } from "../repository/repository.js";
 import type { ChannelAdapter } from "./channel.js";
+import { t } from "./i18n.js";
+import type { Language } from "./conversation.js";
 
 export const REMINDER_24H = "REMINDER_24H";
 export const REMINDER_2H = "REMINDER_2H";
@@ -62,12 +64,17 @@ export class NotificationService {
     const doctor = await this.repo.getDoctor(appointment.doctorId);
     const who = doctor?.name ?? "the doctor";
     const when = istDateTime.format(appointment.start);
-    const message =
-      kind === "booked"
-        ? `Your appointment with ${who} on ${when} is confirmed.`
-        : kind === "rescheduled"
-          ? `Your appointment with ${who} has been moved to ${when}.`
-          : `Your appointment with ${who} on ${when} has been cancelled.`;
+    const lang = (patient.language ?? "en") as Language;
+    
+    let message = "";
+    if (kind === "booked") {
+      message = t("confirm_booked", lang, { doctor: who, time: when });
+    } else if (kind === "rescheduled") {
+      message = t("confirm_rescheduled", lang, { doctor: who, time: when });
+    } else {
+      message = t("confirm_cancelled", lang, { doctor: who, time: when });
+    }
+
     await this.channel.sendText(patient.phone, message);
   }
 
@@ -121,11 +128,13 @@ export class NotificationService {
       const doctor = await this.repo.getDoctor(appointment.doctorId);
       const who = doctor?.name ?? "the doctor";
       const when = istDateTime.format(appointment.start);
-      const lead = within2h ? "in about 2 hours" : "tomorrow";
-      await this.channel.sendText(
-        patient.phone,
-        `Reminder: your appointment with ${who} is ${lead} — ${when}.`,
-      );
+      const lang = (patient.language ?? "en") as Language;
+      
+      const message = within2h 
+        ? t("remind_2h", lang, { doctor: who, time: when })
+        : t("remind_24h", lang, { doctor: who, time: when });
+
+      await this.channel.sendText(patient.phone, message);
       sent++;
     }
     return { sent };

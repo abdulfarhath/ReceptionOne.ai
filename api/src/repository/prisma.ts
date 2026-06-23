@@ -10,12 +10,17 @@ import type {
   AppointmentEventType,
   AppointmentStatus,
   Availability,
+  Broadcast,
+  BroadcastCategory,
+  BroadcastPriority,
+  BroadcastStatus,
   Doctor,
   Patient,
 } from "../domain/types.js";
 import {
   AppointmentStatus as Status,
   AppointmentEventType as EventType,
+  BroadcastStatus as BcStatus,
 } from "../domain/types.js";
 import type { Staff } from "../auth/staff.js";
 import { toStaffRole } from "../auth/staff.js";
@@ -24,10 +29,15 @@ import type {
   AppointmentView,
   AppointmentViewQuery,
   AvailabilityDraft,
+  BroadcastStats,
   CreateAppointmentInput,
   CreateAvailabilityInput,
+  CreateBroadcastInput,
   CreateDoctorInput,
   CreatePatientInput,
+  ListBroadcastsQuery,
+  UpdateBroadcastInput,
+  UpdatePatientInput,
   ListAppointmentsQuery,
   Repository,
   UpdateAppointmentInput,
@@ -75,6 +85,7 @@ type PatientRow = {
   id: string;
   phone: string;
   name: string;
+  language: string;
   consentAt: Date | null;
 };
 type AppointmentRow = {
@@ -120,6 +131,7 @@ function toPatient(row: PatientRow): Patient {
     id: row.id,
     phone: row.phone,
     name: row.name,
+    language: row.language,
     consentAt: row.consentAt,
   };
 }
@@ -167,6 +179,41 @@ function toEvent(row: EventRow): AppointmentEvent {
       row.metadata === null
         ? null
         : (row.metadata as unknown as Record<string, unknown>),
+  };
+}
+
+type BroadcastRow = {
+  id: string;
+  title: string;
+  body: string;
+  category: string;
+  priority: string;
+  status: string;
+  scheduledAt: Date | null;
+  sentAt: Date | null;
+  recipientCount: number;
+  createdById: string;
+  createdByName: string;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+function toBroadcast(row: BroadcastRow): Broadcast {
+  return {
+    id: row.id,
+    title: row.title,
+    body: row.body,
+    // Stored as Strings; the HTTP layer only ever writes validated unions.
+    category: row.category as BroadcastCategory,
+    priority: row.priority as BroadcastPriority,
+    status: row.status as BroadcastStatus,
+    scheduledAt: row.scheduledAt,
+    sentAt: row.sentAt,
+    recipientCount: row.recipientCount,
+    createdById: row.createdById,
+    createdByName: row.createdByName,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
   };
 }
 
@@ -220,16 +267,41 @@ export class PrismaRepository implements Repository, StaffRepository {
       data: {
         phone: input.phone,
         name: input.name,
+        language: input.language ?? "en",
         consentAt: input.consentAt,
       },
     });
     return toPatient(row);
   }
 
+  async updatePatient(id: string, patch: UpdatePatientInput): Promise<Patient> {
+    const row = await this.db.patient.update({
+      where: { id },
+      data: {
+        ...(patch.name !== undefined ? { name: patch.name } : {}),
+        ...(patch.language !== undefined ? { language: patch.language } : {}),
+        ...(patch.consentAt !== undefined ? { consentAt: patch.consentAt } : {}),
+      },
+    });
+    return toPatient(row);
+  }
+
+  async listPatients(): Promise<Patient[]> {
+    const rows = await this.db.patient.findMany({ orderBy: { name: "asc" } });
+    return rows.map(toPatient);
+  }
+
   async listAvailability(doctorId: string): Promise<Availability[]> {
     const rows = await this.db.availability.findMany({
       where: { doctorId },
       orderBy: [{ dayOfWeek: "asc" }, { startMinutes: "asc" }],
+    });
+    return rows.map(toAvailability);
+  }
+
+  async listAllAvailability(): Promise<Availability[]> {
+    const rows = await this.db.availability.findMany({
+      orderBy: [{ doctorId: "asc" }, { dayOfWeek: "asc" }, { startMinutes: "asc" }],
     });
     return rows.map(toAvailability);
   }
@@ -323,6 +395,19 @@ export class PrismaRepository implements Repository, StaffRepository {
       patientName: row.patient.name,
       patientPhone: row.patient.phone,
     }));
+  }
+
+  async listAppointmentsForPatient(patientId: string): Promise<Appointment[]> {
+    const rows = await this.db.appointment.findMany({
+      where: { patientId },
+      orderBy: { start: "desc" }, // newest first
+    });
+    return rows.map(toAppointment);
+  }
+
+  async listAllAppointments(): Promise<Appointment[]> {
+    const rows = await this.db.appointment.findMany();
+    return rows.map(toAppointment);
   }
 
   async listUpcomingAppointmentsForPatient(
@@ -436,6 +521,81 @@ export class PrismaRepository implements Repository, StaffRepository {
       orderBy: { at: "asc" },
     });
     return rows.map(toEvent);
+  }
+
+  async createBroadcast(input: CreateBroadcastInput): Promise<Broadcast> {
+    const row = await this.db.broadcast.create({ data: input });
+    return toBroadcast(row);
+  }
+
+  async getBroadcast(id: string): Promise<Broadcast | null> {
+    const row = await this.db.broadcast.findUnique({ where: { id } });
+    return row ? toBroadcast(row) : null;
+  }
+
+  async listBroadcasts(query: ListBroadcastsQuery): Promise<Broadcast[]> {
+    const term = query.search?.trim();
+    const rows = await this.db.broadcast.findMany({
+      where: {
+        ...(query.category ? { category: query.category } : {}),
+        ...(query.status ? { status: query.status } : {}),
+        ...(query.priority ? { priority: query.priority } : {}),
+        ...(term
+          ? {
+              OR: [
+                { title: { contains: term, mode: "insensitive" } },
+                { body: { contains: term, mode: "insensitive" } },
+              ],
+            }
+          : {}),
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    return rows.map(toBroadcast);
+  }
+
+  async updateBroadcast(
+    id: string,
+    patch: UpdateBroadcastInput,
+  ): Promise<Broadcast> {
+    const row = await this.db.broadcast.update({
+      where: { id },
+      data: {
+        ...(patch.status !== undefined ? { status: patch.status } : {}),
+        ...(patch.sentAt !== undefined ? { sentAt: patch.sentAt } : {}),
+        ...(patch.recipientCount !== undefined
+          ? { recipientCount: patch.recipientCount }
+          : {}),
+      },
+    });
+    return toBroadcast(row);
+  }
+
+  async listDueBroadcasts(now: Date): Promise<Broadcast[]> {
+    const rows = await this.db.broadcast.findMany({
+      where: {
+        status: BcStatus.SCHEDULED,
+        scheduledAt: { not: null, lte: now },
+      },
+      orderBy: { scheduledAt: "asc" },
+    });
+    return rows.map(toBroadcast);
+  }
+
+  async broadcastStats(): Promise<BroadcastStats> {
+    const [totalSent, reached, scheduled] = await Promise.all([
+      this.db.broadcast.count({ where: { status: BcStatus.SENT } }),
+      this.db.broadcast.aggregate({
+        where: { status: BcStatus.SENT },
+        _sum: { recipientCount: true },
+      }),
+      this.db.broadcast.count({ where: { status: BcStatus.SCHEDULED } }),
+    ]);
+    return {
+      totalSent,
+      totalReached: reached._sum.recipientCount ?? 0,
+      scheduled,
+    };
   }
 
   async transaction<T>(fn: (repo: Repository) => Promise<T>): Promise<T> {

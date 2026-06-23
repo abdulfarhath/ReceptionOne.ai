@@ -3,8 +3,10 @@ import cookieParser from "cookie-parser";
 
 import type { AppDeps } from "./deps.js";
 import { errorHandler } from "./middleware/error.js";
+import { analyticsRouter } from "./routes/analytics.js";
 import { authRouter } from "./routes/auth.js";
 import { appointmentsRouter } from "./routes/appointments.js";
+import { broadcastsRouter } from "./routes/broadcasts.js";
 import { doctorsRouter } from "./routes/doctors.js";
 import { patientsRouter } from "./routes/patients.js";
 import { webhookRouter } from "./routes/webhook.js";
@@ -23,6 +25,10 @@ export function createApp(deps: AppDeps): Express {
   app.use("/api/doctors", doctorsRouter(deps));
   app.use("/api/patients", patientsRouter(deps));
   app.use("/api/appointments", appointmentsRouter(deps));
+  app.use("/api/analytics", analyticsRouter(deps));
+  if (deps.broadcasts) {
+    app.use("/api/broadcasts", broadcastsRouter(deps, deps.broadcasts));
+  }
 
   if (deps.messaging) {
     app.use(

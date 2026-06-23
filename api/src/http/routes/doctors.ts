@@ -2,14 +2,42 @@ import { Router } from "express";
 import { z } from "zod";
 
 import { StaffRole } from "../../auth/staff.js";
+import { NotFoundError } from "../../domain/errors.js";
+import { summarizeDoctorDemand } from "../../domain/doctor-insights.js";
 import { SchedulingService } from "../../domain/scheduling.js";
 import { ah } from "../async-handler.js";
 import type { AppDeps } from "../deps.js";
 import type { UpdateDoctorInput } from "../../repository/repository.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 
+// The clinic operates in IST; demand is bucketed by IST calendar day/month.
+const istDayFmt = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Kolkata",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+const istDayKey = (d: Date): string => istDayFmt.format(d);
+const monthSchema = z.string().regex(/^\d{4}-\d{2}$/, "Use YYYY-MM");
+
+/** UTC bounds + the ordered IST day keys for an IST calendar month "YYYY-MM". */
+function monthRange(month: string): { from: Date; to: Date; dayKeys: string[] } {
+  const [y, m] = month.split("-").map((n) => Number.parseInt(n, 10));
+  const next =
+    m === 12 ? `${y! + 1}-01` : `${y}-${String(m! + 1).padStart(2, "0")}`;
+  // IST is UTC+5:30; parsing with the offset yields the correct UTC instant.
+  const from = new Date(`${month}-01T00:00:00+05:30`);
+  const to = new Date(`${next}-01T00:00:00+05:30`);
+  const daysInMonth = new Date(Date.UTC(y!, m!, 0)).getUTCDate();
+  const dayKeys = Array.from(
+    { length: daysInMonth },
+    (_, i) => `${month}-${String(i + 1).padStart(2, "0")}`,
+  );
+  return { from, to, dayKeys };
+}
+
 const phoneSchema = z.string().min(1).transform(val => {
-  let cleaned = val.replace(/[\s\(\)-]/g, "");
+  let cleaned = val.replace(/[\s()-]/g, "");
   if (cleaned.length === 10 && /^\d+$/.test(cleaned)) {
     cleaned = `+91${cleaned}`;
   }
@@ -69,7 +97,7 @@ export function doctorsRouter(deps: AppDeps): Router {
     requireRole(StaffRole.ADMIN),
     ah(async (req, res) => {
       const body = createDoctorSchema.parse(req.body);
-      res.status(201).json(await deps.repo.createDoctor(body));
+      res.status(201).json(await deps.repo.createDoctor({ ...body, phone: body.phone ?? null }));
     }),
   );
 
@@ -116,6 +144,40 @@ export function doctorsRouter(deps: AppDeps): Router {
       const day = new Date(`${date}T00:00:00.000Z`);
       const slots = await scheduling.getAvailableSlots(doctorId, day);
       res.json({ slots: slots.map((s) => s.toISOString()) });
+    }),
+  );
+
+  // Demand analytics for one doctor over an IST calendar month (default: current).
+  router.get(
+    "/:doctorId/insights",
+    ah(async (req, res) => {
+      const doctorId = z.string().min(1).parse(req.params.doctorId);
+      const month =
+        req.query.month === undefined
+          ? istDayKey(new Date()).slice(0, 7)
+          : monthSchema.parse(req.query.month);
+
+      const doctor = await deps.repo.getDoctor(doctorId);
+      if (!doctor) throw new NotFoundError(`Doctor ${doctorId} not found`);
+
+      const { from, to, dayKeys } = monthRange(month);
+      const appointments = await deps.repo.listAppointments({
+        doctorId,
+        from,
+        to,
+      });
+      const summary = summarizeDoctorDemand(appointments, dayKeys, istDayKey);
+
+      res.json({
+        doctor: {
+          id: doctor.id,
+          name: doctor.name,
+          department: doctor.department,
+        },
+        month,
+        range: { from: from.toISOString(), to: to.toISOString() },
+        summary,
+      });
     }),
   );
 

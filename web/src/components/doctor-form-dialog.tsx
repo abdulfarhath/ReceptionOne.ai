@@ -20,6 +20,7 @@ import type { Doctor } from "@/lib/schemas";
 
 const schema = z.object({
   name: z.string().min(1, "Name is required"),
+  phone: z.string().optional().nullable(),
   department: z.string().min(1, "Department is required"),
   slotDurationMinutes: z.coerce
     .number()
@@ -49,7 +50,7 @@ export function DoctorFormDialog({
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { name: "", department: "", slotDurationMinutes: 30 },
+    defaultValues: { name: "", phone: "", department: "", slotDurationMinutes: 30 },
   });
 
   useEffect(() => {
@@ -58,10 +59,11 @@ export function DoctorFormDialog({
         doctor
           ? {
               name: doctor.name,
+              phone: doctor.phone ?? "",
               department: doctor.department,
               slotDurationMinutes: doctor.slotDurationMinutes,
             }
-          : { name: "", department: "", slotDurationMinutes: 30 },
+          : { name: "", phone: "", department: "", slotDurationMinutes: 30 },
       );
     }
   }, [open, doctor, reset]);
@@ -70,6 +72,11 @@ export function DoctorFormDialog({
     mutationFn: (values: FormValues) => {
       const payload = {
         name: String(values.name),
+        phone: values.phone ? (() => {
+          let c = String(values.phone).replace(/[\s\(\)-]/g, "");
+          if (c.length === 10 && /^\d+$/.test(c)) return `+91${c}`;
+          return c;
+        })() : null,
         department: String(values.department),
         slotDurationMinutes: Number(values.slotDurationMinutes),
       };
@@ -105,7 +112,20 @@ export function DoctorFormDialog({
               {...register("name")}
             />
             {errors.name ? (
-              <p className="text-sm text-destructive">{errors.name.message}</p>
+              <p className="text-sm text-destructive">{errors.name.message as string}</p>
+            ) : null}
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="doctor-phone">Phone Number (Optional)</Label>
+            <Input
+              id="doctor-phone"
+              type="tel"
+              placeholder="+1234567890"
+              aria-invalid={Boolean(errors.phone)}
+              {...register("phone")}
+            />
+            {errors.phone ? (
+              <p className="text-sm text-destructive">{errors.phone.message as string}</p>
             ) : null}
           </div>
           <div className="space-y-1.5">

@@ -1,7 +1,10 @@
 // Conversation state for the per-sender state machine. Persisted (keyed by phone)
 // so a patient can continue a booking across messages / restarts.
 
+export type Language = "en" | "te" | "hi";
+
 export const ConversationStep = {
+  CHOOSE_LANGUAGE: "CHOOSE_LANGUAGE",
   GREET: "GREET",
   CHECK_EMERGENCY: "CHECK_EMERGENCY",
   CHOOSE_ACTION: "CHOOSE_ACTION",
@@ -26,6 +29,7 @@ export type ConversationAction =
 
 /** In-progress booking context. Offered* arrays map a 1-based reply to an id/slot. */
 export interface ConversationContext {
+  language?: Language;
   action?: ConversationAction;
   patientId?: string;
   patientName?: string;

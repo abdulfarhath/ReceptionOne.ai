@@ -59,6 +59,7 @@ model Patient {
   id           String        @id @default(cuid())
   phone        String        @unique // E.164
   name         String
+  language     String        @default("en")
   consentAt    DateTime?
   appointments Appointment[]
   createdAt    DateTime      @default(now())
@@ -91,6 +92,29 @@ model AppointmentEvent {
   at            DateTime    @default(now())
 
   @@index([appointmentId])
+}
+
+// A one-to-many broadcast: a single message sent to all consented patients
+// (announcements, camps, drives, promos…). Sent immediately or scheduled; a cron
+// dispatches due ones. category/priority/status are Strings mapped to unions at
+// the repository boundary, like Appointment.status.
+model Broadcast {
+  id             String    @id @default(cuid())
+  title          String
+  body           String
+  category       String // BroadcastCategory
+  priority       String // LOW | NORMAL | HIGH | URGENT
+  status         String // SCHEDULED | SENT
+  scheduledAt    DateTime? // null = send immediately
+  sentAt         DateTime? // set when actually dispatched
+  recipientCount Int       @default(0) // patients reached
+  createdById    String
+  createdByName  String // denormalised sender name for history
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([status, scheduledAt])
+  @@index([createdAt])
 }
 
 // Outbound notification ledger. The unique (appointmentId, kind) makes reminders

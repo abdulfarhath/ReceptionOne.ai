@@ -51,13 +51,15 @@ describe("ConversationEngine", () => {
   });
 
   it("handles emergency flow", async () => {
-    expect(await say("hi")).toMatch(/emergency/i);
+    expect(await say("hi")).toMatch(/language/i);
+    expect(await say("1")).toMatch(/emergency/i); // English
     expect(await say("1")).toMatch(/911|emergency room/i); // Yes
   });
 
   it("books an appointment end to end", async () => {
-    expect(await say("hi")).toMatch(/emergency/i);
-    expect(await say("2")).toContain("Book an appointment"); // No
+    expect(await say("hi")).toMatch(/language/i);
+    expect(await say("1")).toMatch(/emergency/i); // English
+    expect(await say("2")).toContain("Book appointment"); // No
     expect(await say("1")).toMatch(/name/i); // new patient -> ask name
     expect(await say("Riya Sharma")).toContain("Dr. Test"); // doctor list
     const slots = await say("1"); // choose doctor -> slot list
@@ -77,8 +79,33 @@ describe("ConversationEngine", () => {
     expect(appts[0]?.status).toBe(AppointmentStatus.BOOKED);
   });
 
+  it("keeps the chosen language for the whole flow (returning patient)", async () => {
+    // Returning patient whose stored preference is the default English. Picking
+    // Telugu must NOT revert to English when the booking flow starts — this was
+    // the bug: context.language got clobbered by the patient's stored value.
+    await env.repo.createPatient({
+      phone: PHONE,
+      name: "Riya",
+      language: "en",
+      consentAt: FIXED_NOW,
+    });
+
+    expect(await say("hi")).toMatch(/language/i);
+    expect(await say("2")).toContain("వైద్యపరమైన"); // Telugu emergency check
+    expect(await say("2")).toContain("బుకింగ్"); // Telugu menu (No to emergency)
+    expect(await say("1")).toContain("డాక్టర్"); // Book -> Telugu doctor list (not English)
+    expect(await say("1")).toContain("సమయాలు"); // Telugu slot list
+    expect(await say("1")).toContain("బుక్"); // Telugu confirm prompt
+    expect(await say("1")).toContain("బుకింగ్ పూర్తయింది"); // Telugu success
+
+    // The choice is persisted so async confirmations/reminders match it.
+    const patient = await env.repo.getPatientByPhone(PHONE);
+    expect(patient?.language).toBe("te");
+  });
+
   it("rejects booking a slot that was taken after it was offered", async () => {
     await say("hi");
+    await say("1"); // English
     await say("2"); // No to emergency
     await say("1");
     await say("Riya Sharma");
@@ -121,6 +148,7 @@ describe("ConversationEngine", () => {
     });
 
     await say("hi");
+    await say("1"); // English
     await say("2"); // No to emergency
     expect(await say("2")).toMatch(/which appointment/i); // reschedule -> list
     await say("1"); // pick the appointment -> slots (09:00 now free again is excluded? it's the user's own booked slot)
@@ -149,6 +177,7 @@ describe("ConversationEngine", () => {
     });
 
     await say("hi");
+    await say("1"); // English
     await say("2"); // No to emergency
     expect(await say("3")).toMatch(/which appointment/i); // cancel -> list
     expect(await say("1")).toMatch(/cancel/i); // confirm prompt
@@ -165,7 +194,8 @@ describe("ConversationEngine", () => {
 
   it("re-prompts on invalid input", async () => {
     await say("hi");
+    await say("1"); // English
     await say("2"); // No to emergency
-    expect(await say("9")).toMatch(/didn't catch|tap one of the options/i);
+    expect(await say("9")).toMatch(/select an option/i);
   });
 });
