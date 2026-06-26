@@ -4,11 +4,18 @@ import { z } from "zod";
 import { StaffRole } from "../../auth/staff.js";
 import { NotFoundError } from "../../domain/errors.js";
 import { summarizeDoctorDemand } from "../../domain/doctor-insights.js";
-import { SchedulingService } from "../../domain/scheduling.js";
+import { SchedulingService, toQueueDate } from "../../domain/scheduling.js";
 import { ah } from "../async-handler.js";
 import type { AppDeps } from "../deps.js";
 import type { UpdateDoctorInput } from "../../repository/repository.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
+
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
+const dateQuerySchema = z.object({
+  date: z.string().regex(DATE, "Use YYYY-MM-DD").optional(),
+});
+const queueDateFrom = (date?: string): Date =>
+  toQueueDate(date ? new Date(`${date}T00:00:00.000Z`) : new Date());
 
 // The clinic operates in IST; demand is bucketed by IST calendar day/month.
 const istDayFmt = new Intl.DateTimeFormat("en-CA", {
@@ -48,7 +55,9 @@ const createDoctorSchema = z.object({
   name: z.string().min(1),
   phone: phoneSchema.optional().nullable(),
   department: z.string().min(1),
-  slotDurationMinutes: z.number().int().positive().max(480),
+  // Legacy; still accepted for back-compat but unused by the queue model.
+  slotDurationMinutes: z.number().int().positive().max(480).default(30),
+  avgConsultMinutes: z.number().int().positive().max(480).default(15),
 });
 
 const updateDoctorSchema = z
@@ -57,6 +66,7 @@ const updateDoctorSchema = z
     phone: phoneSchema.optional().nullable(),
     department: z.string().min(1).optional(),
     slotDurationMinutes: z.number().int().positive().max(480).optional(),
+    avgConsultMinutes: z.number().int().positive().max(480).optional(),
   })
   .refine((d) => Object.keys(d).length > 0, {
     message: "At least one field is required",
@@ -76,14 +86,31 @@ const replaceAvailabilitySchema = z.object({
   windows: z.array(windowSchema),
 });
 
-// A calendar day (UTC) — clinic hours don't cross the UTC/IST date boundary.
-const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD");
-
 /** Doctor + availability management. Reads need auth; writes need ADMIN. */
 export function doctorsRouter(deps: AppDeps): Router {
   const router = Router();
   const scheduling = new SchedulingService(deps.repo);
   router.use(requireAuth(deps));
+
+  // Estimate BEFORE booking (people ahead, wait, suggested arrival).
+  router.get(
+    "/:id/quote",
+    ah(async (req, res) => {
+      const id = z.string().min(1).parse(req.params.id);
+      const { date } = dateQuerySchema.parse(req.query);
+      res.json(await scheduling.quote(id, queueDateFrom(date)));
+    }),
+  );
+
+  // Grouped live queue board for one doctor.
+  router.get(
+    "/:id/queue",
+    ah(async (req, res) => {
+      const id = z.string().min(1).parse(req.params.id);
+      const { date } = dateQuerySchema.parse(req.query);
+      res.json(await scheduling.getQueue(id, queueDateFrom(date)));
+    }),
+  );
 
   router.get(
     "/",
@@ -114,6 +141,9 @@ export function doctorsRouter(deps: AppDeps): Router {
       if (body.slotDurationMinutes !== undefined) {
         patch.slotDurationMinutes = body.slotDurationMinutes;
       }
+      if (body.avgConsultMinutes !== undefined) {
+        patch.avgConsultMinutes = body.avgConsultMinutes;
+      }
       res.json(await deps.repo.updateDoctor(doctorId, patch));
     }),
   );
@@ -136,17 +166,6 @@ export function doctorsRouter(deps: AppDeps): Router {
     }),
   );
 
-  router.get(
-    "/:doctorId/slots",
-    ah(async (req, res) => {
-      const doctorId = z.string().min(1).parse(req.params.doctorId);
-      const date = dateSchema.parse(req.query.date);
-      const day = new Date(`${date}T00:00:00.000Z`);
-      const slots = await scheduling.getAvailableSlots(doctorId, day);
-      res.json({ slots: slots.map((s) => s.toISOString()) });
-    }),
-  );
-
   // Demand analytics for one doctor over an IST calendar month (default: current).
   router.get(
     "/:doctorId/insights",
@@ -161,11 +180,14 @@ export function doctorsRouter(deps: AppDeps): Router {
       if (!doctor) throw new NotFoundError(`Doctor ${doctorId} not found`);
 
       const { from, to, dayKeys } = monthRange(month);
-      const appointments = await deps.repo.listAppointments({
-        doctorId,
-        from,
-        to,
-      });
+      const fromMs = from.getTime();
+      const toMs = to.getTime();
+      const appointments = (await deps.repo.listAllAppointments()).filter(
+        (a) =>
+          a.doctorId === doctorId &&
+          a.queueDate.getTime() >= fromMs &&
+          a.queueDate.getTime() < toMs,
+      );
       const summary = summarizeDoctorDemand(appointments, dayKeys, istDayKey);
 
       res.json({

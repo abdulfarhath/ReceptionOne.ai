@@ -80,7 +80,7 @@ export function PatientsPage() {
               <tr>
                 <th className="px-4 py-2 font-medium">Patient</th>
                 <th className="px-4 py-2 text-center font-medium">Total</th>
-                <th className="px-4 py-2 text-center font-medium">Upcoming</th>
+                <th className="px-4 py-2 text-center font-medium">Active</th>
                 <th className="px-4 py-2 text-center font-medium">Completed</th>
                 <th className="px-4 py-2 text-center font-medium">Cancelled</th>
                 <th className="px-4 py-2 font-medium">Last visit</th>
@@ -107,8 +107,8 @@ export function PatientsPage() {
                     {p.total}
                   </td>
                   <td className="px-4 py-3 text-center tabular-nums">
-                    {p.upcoming > 0 ? (
-                      <Badge variant="default">{p.upcoming}</Badge>
+                    {p.active > 0 ? (
+                      <Badge variant="default">{p.active}</Badge>
                     ) : (
                       <span className="text-muted-foreground">0</span>
                     )}

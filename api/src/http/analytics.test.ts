@@ -18,7 +18,6 @@ const config: AppConfig = {
 const logger = pino({ level: "silent" });
 const STAFF = { email: "recept@clinic.test", password: "receptpass" };
 
-// Today's clinic (IST) date + weekday, computed the same way the route does.
 const istDateFmt = new Intl.DateTimeFormat("en-CA", {
   timeZone: "Asia/Kolkata",
   year: "numeric",
@@ -26,7 +25,7 @@ const istDateFmt = new Intl.DateTimeFormat("en-CA", {
   day: "2-digit",
 });
 const TODAY = istDateFmt.format(new Date());
-const TODAY_WEEKDAY = new Date(`${TODAY}T00:00:00.000Z`).getUTCDay();
+const TODAY_QUEUE_DATE = new Date(`${TODAY}T00:00:00.000Z`);
 
 async function buildApp() {
   const repo = new InMemoryRepository();
@@ -42,44 +41,46 @@ async function buildApp() {
     phone: null,
     department: "General",
     slotDurationMinutes: 30,
+    avgConsultMinutes: 10,
   });
-  // 09:00–11:00 IST today = 03:30–05:30 UTC = minutes 210–330 -> 4 slots capacity.
-  repo.addAvailability({
-    id: "av1",
-    doctorId: doc.id,
-    dayOfWeek: TODAY_WEEKDAY,
-    startMinutes: 210,
-    endMinutes: 330,
-  });
-  const p1 = repo.addPatient({
-    id: "p1",
-    phone: "+919000000001",
-    name: "Returning",
-    language: "en",
-    consentAt: new Date("2020-01-01T00:00:00Z"),
-  });
-  const p2 = repo.addPatient({
-    id: "p2",
-    phone: "+919000000002",
-    name: "New",
-    language: "en",
-    consentAt: new Date("2020-01-01T00:00:00Z"),
-  });
-  const mk = (patientId: string, startIso: string, status: AppointmentStatus) =>
-    repo.createAppointment({
+  repo.addPatient({ id: "p1", phone: "+919000000001", name: "Returning", language: "en", consentAt: new Date("2020-01-01T00:00:00Z") });
+  repo.addPatient({ id: "p2", phone: "+919000000002", name: "New", language: "en", consentAt: new Date("2020-01-01T00:00:00Z") });
+
+  let token = 0;
+  const mk = async (
+    patientId: string,
+    queueDate: Date,
+    status: AppointmentStatus,
+    consult?: { startedAt: string; doneAt: string },
+  ) => {
+    const e = await repo.createAppointment({
       doctorId: doc.id,
       patientId,
-      start: new Date(startIso),
-      end: new Date(new Date(startIso).getTime() + 30 * 60_000),
+      queueDate,
+      token: ++token,
+      isWalkIn: false,
+      isPriority: false,
       status,
     });
-  // Two visits dated today at the 09:00 IST hour (COMPLETED so run-time doesn't
-  // turn a past BOOKED into a no-show). Historical appts sit at 14:00 IST so they
-  // can't collide with today's 09:00 heatmap cell on matching weekdays.
-  await mk(p1.id, `${TODAY}T03:30:00.000Z`, AppointmentStatus.COMPLETED); // 09:00 IST today
-  await mk(p1.id, "2020-06-01T08:30:00.000Z", AppointmentStatus.COMPLETED); // 14:00 IST, past
-  await mk(p1.id, "2019-06-01T08:30:00.000Z", AppointmentStatus.BOOKED); // past BOOKED -> est no-show
-  await mk(p2.id, `${TODAY}T04:00:00.000Z`, AppointmentStatus.COMPLETED); // 09:30 IST today
+    if (consult) {
+      await repo.updateAppointment(e.id, {
+        startedAt: new Date(consult.startedAt),
+        doneAt: new Date(consult.doneAt),
+      });
+    }
+  };
+  // Two completed today, with consult durations 10 + 20 min -> avg 15.
+  await mk("p1", TODAY_QUEUE_DATE, AppointmentStatus.DONE, {
+    startedAt: `${TODAY}T04:00:00.000Z`,
+    doneAt: `${TODAY}T04:10:00.000Z`,
+  });
+  await mk("p2", TODAY_QUEUE_DATE, AppointmentStatus.DONE, {
+    startedAt: `${TODAY}T05:00:00.000Z`,
+    doneAt: `${TODAY}T05:20:00.000Z`,
+  });
+  // History: one more DONE and one NO_SHOW.
+  await mk("p1", new Date("2026-05-10T00:00:00.000Z"), AppointmentStatus.DONE);
+  await mk("p1", new Date("2026-05-11T00:00:00.000Z"), AppointmentStatus.NO_SHOW);
 
   return createApp({ repo, config, logger });
 }
@@ -98,17 +99,17 @@ describe("analytics dashboard endpoint", () => {
     expect((await request(app).get("/api/analytics/dashboard")).status).toBe(401);
   });
 
-  it("computes doctor utilization from real availability + bookings", async () => {
+  it("computes per-doctor queue activity incl. real no-shows + avg consult", async () => {
     const res = await agent.get("/api/analytics/dashboard");
     expect(res.status).toBe(200);
-    const doc = res.body.doctors[0];
-    expect(doc).toMatchObject({
+    expect(res.body.doctors[0]).toMatchObject({
       name: "Dr. Test",
-      capacityToday: 4, // 4 thirty-min slots in 09:00–11:00
-      bookedToday: 2, // two visits dated today
-      utilizationPct: 50, // 2 / 4
-      estNoShows: 1, // the 2019 past-BOOKED appointment
-      totalBooked: 4, // all four are BOOKED/COMPLETED visits
+      joinedToday: 2,
+      doneToday: 2,
+      noShowToday: 0,
+      totalDone: 3, // 2 today + 1 historical
+      noShows: 1, // the real NO_SHOW status
+      avgConsultMinutes: 15, // (10 + 20) / 2
     });
   });
 
@@ -116,10 +117,10 @@ describe("analytics dashboard endpoint", () => {
     const { patients } = (await agent.get("/api/analytics/dashboard")).body;
     expect(patients).toMatchObject({
       totalPatients: 2,
-      returningPatients: 1, // p1 (3 appts)
-      newPatients: 1, // p2 (1 appt)
+      returningPatients: 1, // p1 (3 entries)
+      newPatients: 1, // p2 (1 entry)
       returningPct: 50,
-      retentionPct: 50, // of {p1,p2} completed, only p1 rebooked
+      retentionPct: 50,
     });
   });
 
@@ -128,18 +129,10 @@ describe("analytics dashboard endpoint", () => {
     expect(demand.daily).toHaveLength(30);
     expect(demand.weekly).toHaveLength(12);
     expect(demand.monthly).toHaveLength(12);
-    expect(demand.hourly).toHaveLength(13); // 08:00–20:00
+    expect(demand.hourly).toHaveLength(13);
     expect(demand.weekday).toHaveLength(7);
     expect(heatmap.cells).toHaveLength(7 * 13);
-
-    // Two visits today land in the 09:00 cell on today's weekday.
-    const cell = heatmap.cells.find(
-      (c: { weekday: number; hour: number }) =>
-        c.weekday === TODAY_WEEKDAY && c.hour === 9,
-    );
-    expect(cell.bookings).toBe(2);
-    expect(heatmap.max).toBeGreaterThanOrEqual(2);
-    // The current month bucket (last entry) holds today's two visits.
+    // Today's two tokens fall in the current month bucket.
     expect(demand.monthly.at(-1).bookings).toBeGreaterThanOrEqual(2);
   });
 });

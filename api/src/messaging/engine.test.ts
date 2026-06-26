@@ -1,19 +1,19 @@
 import { describe, it, expect, beforeEach } from "vitest";
 
-import { SchedulingService, type Clock } from "../domain/scheduling.js";
+import {
+  SchedulingService,
+  toQueueDate,
+  type Clock,
+} from "../domain/scheduling.js";
 import { AppointmentStatus } from "../domain/types.js";
 import { InMemoryRepository } from "../repository/in-memory.js";
 import { ConversationEngine } from "./engine.js";
 import { InMemoryConversationStore } from "./conversation-store.js";
 import { MockChannelAdapter } from "./mock-channel.js";
-import { NotificationService } from "./notifications.js";
 
-// 2026-01-05 is a Monday (UTC). Doctor works Mon 09:00–11:00 UTC -> 4 x 30min slots.
-const FIXED_NOW = new Date("2026-01-05T00:00:00.000Z");
+const FIXED_NOW = new Date("2026-01-05T06:00:00.000Z");
 const clock: Clock = { now: () => FIXED_NOW };
 const PHONE = "+919999999999";
-const FIRST_SLOT = "2026-01-05T09:00:00.000Z";
-const SECOND_SLOT = "2026-01-05T09:30:00.000Z";
 
 function setup() {
   const repo = new InMemoryRepository();
@@ -23,23 +23,23 @@ function setup() {
     phone: "+910000000003",
     department: "General",
     slotDurationMinutes: 30,
+    avgConsultMinutes: 10,
   });
   repo.addAvailability({
     id: "av1",
     doctorId: "doc1",
-    dayOfWeek: 1,
-    startMinutes: 540,
-    endMinutes: 660,
+    dayOfWeek: toQueueDate(FIXED_NOW).getUTCDay(),
+    startMinutes: 210,
+    endMinutes: 600,
   });
   const scheduling = new SchedulingService(repo, clock);
   const channel = new MockChannelAdapter();
   const store = new InMemoryConversationStore();
-  const notifications = new NotificationService({ repo, channel, clock });
-  const engine = new ConversationEngine({ repo, scheduling, channel, store, notifications, clock });
+  const engine = new ConversationEngine({ repo, scheduling, channel, store, clock });
   return { repo, scheduling, channel, engine };
 }
 
-describe("ConversationEngine", () => {
+describe("ConversationEngine (queue)", () => {
   let env: ReturnType<typeof setup>;
   const say = async (text: string): Promise<string> => {
     await env.engine.handle(env.channel.parseInbound({ from: PHONE, text }));
@@ -50,149 +50,81 @@ describe("ConversationEngine", () => {
     env = setup();
   });
 
-  it("handles emergency flow", async () => {
+  it("handles the emergency flow", async () => {
     expect(await say("hi")).toMatch(/language/i);
     expect(await say("1")).toMatch(/emergency/i); // English
-    expect(await say("1")).toMatch(/911|emergency room/i); // Yes
+    expect(await say("1")).toMatch(/108|emergency/i); // Yes -> hand-off
   });
 
-  it("books an appointment end to end", async () => {
+  it("joins the queue end to end (patient sees a range, not a token)", async () => {
     expect(await say("hi")).toMatch(/language/i);
     expect(await say("1")).toMatch(/emergency/i); // English
-    expect(await say("2")).toContain("Book appointment"); // No
-    expect(await say("1")).toMatch(/name/i); // new patient -> ask name
-    expect(await say("Riya Sharma")).toContain("Dr. Test"); // doctor list
-    const slots = await say("1"); // choose doctor -> slot list
-    expect(slots).toContain("1."); // numbered options present
-    expect(await say("1")).toMatch(/confirm/i); // confirm prompt
-    expect(await say("1")).toMatch(/booked/i); // confirmed
+    expect(await say("2")).toContain("Book appointment"); // No -> menu
+    expect(await say("1")).toMatch(/name/i); // Book -> ask name (new patient)
+    expect(await say("Riya Sharma")).toContain("Dr. Test"); // choose doctor
+    expect(await say("1")).toMatch(/min wait|book\?/i); // quote + confirm (range)
+    const joined = await say("1"); // joined
+    expect(joined).toMatch(/booked with|min wait/i);
+    expect(joined).not.toMatch(/token|#\d/i); // never a token/rank to the patient
 
     const patient = await env.repo.getPatientByPhone(PHONE);
     expect(patient).not.toBeNull();
-    expect(patient?.consentAt).not.toBeNull(); // consent captured on first contact
-    const appts = await env.repo.listUpcomingAppointmentsForPatient(
-      patient!.id,
-      FIXED_NOW,
-    );
-    expect(appts).toHaveLength(1);
-    expect(appts[0]?.start.toISOString()).toBe(FIRST_SLOT);
-    expect(appts[0]?.status).toBe(AppointmentStatus.BOOKED);
+    const entries = await env.repo.listQueueEntries("doc1", toQueueDate(FIXED_NOW));
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({ token: 1, status: AppointmentStatus.WAITING });
+
+    // "arrived" keyword checks them in and reports position/wait.
+    expect(await say("arrived")).toMatch(/checked in/i);
+    const after = await env.repo.getAppointment(entries[0]!.id);
+    expect(after?.status).toBe(AppointmentStatus.ARRIVED);
   });
 
-  it("keeps the chosen language for the whole flow (returning patient)", async () => {
-    // Returning patient whose stored preference is the default English. Picking
-    // Telugu must NOT revert to English when the booking flow starts — this was
-    // the bug: context.language got clobbered by the patient's stored value.
-    await env.repo.createPatient({
-      phone: PHONE,
-      name: "Riya",
-      language: "en",
-      consentAt: FIXED_NOW,
-    });
-
-    expect(await say("hi")).toMatch(/language/i);
-    expect(await say("2")).toContain("వైద్యపరమైన"); // Telugu emergency check
-    expect(await say("2")).toContain("బుకింగ్"); // Telugu menu (No to emergency)
-    expect(await say("1")).toContain("డాక్టర్"); // Book -> Telugu doctor list (not English)
-    expect(await say("1")).toContain("సమయాలు"); // Telugu slot list
-    expect(await say("1")).toContain("బుక్"); // Telugu confirm prompt
-    expect(await say("1")).toContain("బుకింగ్ పూర్తయింది"); // Telugu success
-
-    // The choice is persisted so async confirmations/reminders match it.
-    const patient = await env.repo.getPatientByPhone(PHONE);
-    expect(patient?.language).toBe("te");
-  });
-
-  it("rejects booking a slot that was taken after it was offered", async () => {
-    await say("hi");
-    await say("1"); // English
-    await say("2"); // No to emergency
-    await say("1");
-    await say("Riya Sharma");
-    await say("1"); // doctor chosen, slots offered (option 1 = 09:00)
-
-    // Someone else grabs the 09:00 slot before this patient confirms.
-    const other = await env.repo.createPatient({
-      phone: "+918888888888",
-      name: "Other",
-      consentAt: FIXED_NOW,
-    });
-    await env.scheduling.book({
-      doctorId: "doc1",
-      patientId: other.id,
-      start: new Date(FIRST_SLOT),
-    });
-
-    await say("1"); // select 09:00
-    await say("1"); // confirm -> SlotUnavailable
-
-    expect(env.channel.outbox.some((m) => /just taken/i.test(m.text))).toBe(true);
-    const patient = await env.repo.getPatientByPhone(PHONE);
-    const mine = await env.repo.listUpcomingAppointmentsForPatient(
-      patient!.id,
-      FIXED_NOW,
-    );
-    expect(mine).toHaveLength(0); // the patient did NOT get the taken slot
-  });
-
-  it("reschedules an existing appointment", async () => {
+  it("shows the patient's live token status", async () => {
+    // Seed a returning patient with an active token today.
     const patient = await env.repo.createPatient({
       phone: PHONE,
       name: "Riya",
       consentAt: FIXED_NOW,
     });
-    await env.scheduling.book({
+    await env.scheduling.joinQueue({
       doctorId: "doc1",
-      patientId: patient.id,
-      start: new Date(FIRST_SLOT),
+      date: FIXED_NOW,
+      patientName: patient.name,
+      patientPhone: PHONE,
     });
 
     await say("hi");
     await say("1"); // English
     await say("2"); // No to emergency
-    expect(await say("2")).toMatch(/which appointment/i); // reschedule -> list
-    await say("1"); // pick the appointment -> slots (09:00 now free again is excluded? it's the user's own booked slot)
-    await say("1"); // pick the first offered new slot
-    expect(await say("1")).toMatch(/now/i); // confirmed reschedule
-
-    const appts = await env.repo.listUpcomingAppointmentsForPatient(
-      patient.id,
-      FIXED_NOW,
-    );
-    expect(appts).toHaveLength(1);
-    // First free slot for reschedule is 09:30 (the patient's own 09:00 is booked).
-    expect(appts[0]?.start.toISOString()).toBe(SECOND_SLOT);
+    const status = await say("3"); // My appointments -> status
+    expect(status).toMatch(/min wait/i);
+    expect(status).not.toMatch(/token|#\d/i);
   });
 
-  it("cancels an existing appointment and frees the slot", async () => {
+  it("cancels an active token", async () => {
     const patient = await env.repo.createPatient({
       phone: PHONE,
       name: "Riya",
       consentAt: FIXED_NOW,
     });
-    const appt = await env.scheduling.book({
+    const joined = await env.scheduling.joinQueue({
       doctorId: "doc1",
-      patientId: patient.id,
-      start: new Date(FIRST_SLOT),
+      date: FIXED_NOW,
+      patientName: patient.name,
+      patientPhone: PHONE,
     });
 
     await say("hi");
     await say("1"); // English
     await say("2"); // No to emergency
-    expect(await say("3")).toMatch(/which appointment/i); // cancel -> list
-    expect(await say("1")).toMatch(/cancel/i); // confirm prompt
-    expect(await say("1")).toMatch(/cancelled/i); // confirmed
+    expect(await say("2")).toMatch(/which|cancel/i); // Cancel -> pick token
+    expect(await say("1")).toMatch(/cancelled/i); // confirm cancellation
 
-    const after = await env.repo.getAppointment(appt.id);
-    expect(after?.status).toBe(AppointmentStatus.CANCELLED);
-    const upcoming = await env.repo.listUpcomingAppointmentsForPatient(
-      patient.id,
-      FIXED_NOW,
-    );
-    expect(upcoming).toHaveLength(0);
+    const entry = await env.repo.getAppointment(joined.bookingId);
+    expect(entry?.status).toBe(AppointmentStatus.CANCELLED);
   });
 
-  it("re-prompts on invalid input", async () => {
+  it("re-prompts on invalid menu input", async () => {
     await say("hi");
     await say("1"); // English
     await say("2"); // No to emergency

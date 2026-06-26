@@ -11,6 +11,7 @@ const DOMAIN_STATUS: Record<DomainErrorCode, number> = {
   SLOT_UNAVAILABLE: 409,
   OUTSIDE_HOURS: 422,
   PAST_TIME: 422,
+  INVALID_TRANSITION: 409,
 };
 
 /** The single error middleware. Maps known errors to status codes; never leaks stacks. */

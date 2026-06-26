@@ -20,6 +20,7 @@ export const doctorSchema = z.object({
   phone: z.string().nullable().optional(),
   department: z.string(),
   slotDurationMinutes: z.number(),
+  avgConsultMinutes: z.number(),
 });
 export type Doctor = z.infer<typeof doctorSchema>;
 
@@ -41,31 +42,29 @@ export const patientSchema = z.object({
 export type Patient = z.infer<typeof patientSchema>;
 
 export const appointmentStatusSchema = z.enum([
-  "BOOKED",
+  "WAITING",
+  "ARRIVED",
+  "IN_PROGRESS",
+  "DONE",
+  "NO_SHOW",
   "CANCELLED",
-  "COMPLETED",
 ]);
 export type AppointmentStatus = z.infer<typeof appointmentStatusSchema>;
 
-export const appointmentSchema = z.object({
-  id: z.string(),
-  doctorId: z.string(),
-  patientId: z.string(),
-  start: z.string(),
-  end: z.string(),
-  status: appointmentStatusSchema,
-  createdAt: z.string(),
-  updatedAt: z.string(),
-});
-export type Appointment = z.infer<typeof appointmentSchema>;
-
+/** Day-board read model: a queue entry joined with doctor + patient. */
 export const appointmentViewSchema = z.object({
   id: z.string(),
   doctorId: z.string(),
   patientId: z.string(),
-  start: z.string(),
-  end: z.string(),
+  queueDate: z.string(),
+  token: z.number(),
+  isWalkIn: z.boolean(),
+  isPriority: z.boolean(),
+  onHold: z.boolean(),
   status: appointmentStatusSchema,
+  arrivedAt: z.string().nullable(),
+  startedAt: z.string().nullable(),
+  doneAt: z.string().nullable(),
   createdAt: z.string(),
   doctorName: z.string(),
   department: z.string(),
@@ -74,20 +73,85 @@ export const appointmentViewSchema = z.object({
 });
 export type AppointmentView = z.infer<typeof appointmentViewSchema>;
 
-export const slotsResponseSchema = z.object({ slots: z.array(z.string()) });
 export const patientLookupSchema = z.object({
   patient: patientSchema.nullable(),
 });
 
+// --- Live queue ----------------------------------------------------------
+export const queueEntryViewSchema = z.object({
+  id: z.string(),
+  token: z.number(),
+  status: appointmentStatusSchema,
+  isWalkIn: z.boolean(),
+  isPriority: z.boolean(),
+  onHold: z.boolean(),
+  patientName: z.string(),
+  patientPhone: z.string(),
+  position: z.number(),
+  estimateWaitMinutes: z.number(),
+  arrivedAt: z.string().nullable(),
+  startedAt: z.string().nullable(),
+  doneAt: z.string().nullable(),
+});
+export type QueueEntryView = z.infer<typeof queueEntryViewSchema>;
+
+export const queueBoardSchema = z.object({
+  traveling: z.array(queueEntryViewSchema),
+  waitingHere: z.array(queueEntryViewSchema),
+  inProgress: z.array(queueEntryViewSchema),
+  done: z.array(queueEntryViewSchema),
+  noShow: z.array(queueEntryViewSchema),
+});
+export type QueueBoard = z.infer<typeof queueBoardSchema>;
+
+export const quoteResultSchema = z.object({
+  peopleAhead: z.number(),
+  estimateWaitMinutes: z.number(),
+  estimateMinMinutes: z.number(),
+  estimateMaxMinutes: z.number(),
+  suggestedArrival: z.string(),
+});
+export type QuoteResult = z.infer<typeof quoteResultSchema>;
+
+/** Patient-facing join result: an honest range, never token/position. */
+export const joinResultSchema = z.object({
+  bookingId: z.string(),
+  estimateMinMinutes: z.number(),
+  estimateMaxMinutes: z.number(),
+  suggestedArrival: z.string(),
+  priorityWarning: z.string().optional(),
+});
+export type JoinResult = z.infer<typeof joinResultSchema>;
+
+/** A single queue entry (a write/transition result). */
+export const queueEntrySchema = z.object({
+  id: z.string(),
+  doctorId: z.string(),
+  patientId: z.string(),
+  queueDate: z.string(),
+  token: z.number(),
+  isWalkIn: z.boolean(),
+  isPriority: z.boolean(),
+  onHold: z.boolean(),
+  status: appointmentStatusSchema,
+  arrivedAt: z.string().nullable(),
+  startedAt: z.string().nullable(),
+  doneAt: z.string().nullable(),
+  lastNotifiedMaxMinutes: z.number().nullable().optional(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type QueueEntry = z.infer<typeof queueEntrySchema>;
+
 // --- Patient history -----------------------------------------------------
 export const patientHistorySummarySchema = z.object({
   total: z.number(),
-  upcoming: z.number(),
+  active: z.number(),
   completed: z.number(),
   cancelled: z.number(),
+  noShow: z.number(),
   firstVisitAt: z.string().nullable(),
   lastVisitAt: z.string().nullable(),
-  nextAppointmentAt: z.string().nullable(),
 });
 export type PatientHistorySummary = z.infer<typeof patientHistorySummarySchema>;
 
@@ -104,14 +168,14 @@ export const patientsDirectorySchema = z.object({
   patients: z.array(patientSummarySchema),
 });
 
-/** One appointment in a patient's timeline (joined with doctor). */
+/** One queue entry in a patient's timeline (joined with doctor). */
 export const patientAppointmentSchema = z.object({
   id: z.string(),
   doctorId: z.string(),
   doctorName: z.string(),
   department: z.string(),
-  start: z.string(),
-  end: z.string(),
+  queueDate: z.string(),
+  token: z.number(),
   status: appointmentStatusSchema,
   createdAt: z.string(),
 });
@@ -127,18 +191,18 @@ export type PatientDetail = z.infer<typeof patientDetailSchema>;
 // --- Doctor insights -----------------------------------------------------
 export const doctorDayDemandSchema = z.object({
   date: z.string(),
-  booked: z.number(),
-  completed: z.number(),
+  joined: z.number(),
+  done: z.number(),
+  noShow: z.number(),
   cancelled: z.number(),
-  visits: z.number(),
 });
 export type DoctorDayDemand = z.infer<typeof doctorDayDemandSchema>;
 
 export const doctorDemandSummarySchema = z.object({
-  totalBooked: z.number(),
-  totalCompleted: z.number(),
+  totalJoined: z.number(),
+  totalDone: z.number(),
+  totalNoShow: z.number(),
   totalCancelled: z.number(),
-  totalVisits: z.number(),
   busiestDate: z.string().nullable(),
   busiestCount: z.number(),
   averagePerDay: z.number(),
@@ -159,19 +223,18 @@ export const doctorInsightsSchema = z.object({
 export type DoctorInsights = z.infer<typeof doctorInsightsSchema>;
 
 // --- Analytics dashboard -------------------------------------------------
-export const doctorUtilizationSchema = z.object({
+export const doctorActivitySchema = z.object({
   id: z.string(),
   name: z.string(),
   department: z.string(),
-  bookedToday: z.number(),
-  capacityToday: z.number(),
-  utilizationPct: z.number(),
-  openToday: z.number(),
-  openThisWeek: z.number(),
-  totalBooked: z.number(),
-  estNoShows: z.number(),
+  joinedToday: z.number(),
+  doneToday: z.number(),
+  noShowToday: z.number(),
+  totalDone: z.number(),
+  noShows: z.number(),
+  avgConsultMinutes: z.number().nullable(),
 });
-export type DoctorUtilization = z.infer<typeof doctorUtilizationSchema>;
+export type DoctorActivity = z.infer<typeof doctorActivitySchema>;
 
 export const demandPointSchema = z.object({
   key: z.string(),
@@ -190,7 +253,7 @@ export type HeatmapCell = z.infer<typeof heatmapCellSchema>;
 export const analyticsSchema = z.object({
   generatedAt: z.string(),
   today: z.string(),
-  doctors: z.array(doctorUtilizationSchema),
+  doctors: z.array(doctorActivitySchema),
   demand: z.object({
     daily: z.array(demandPointSchema),
     weekly: z.array(demandPointSchema),

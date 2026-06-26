@@ -38,7 +38,6 @@ import type {
   ListBroadcastsQuery,
   UpdateBroadcastInput,
   UpdatePatientInput,
-  ListAppointmentsQuery,
   Repository,
   UpdateAppointmentInput,
   UpdateDoctorInput,
@@ -73,6 +72,7 @@ type DoctorRow = {
   phone: string | null;
   department: string;
   slotDurationMinutes: number;
+  avgConsultMinutes: number;
 };
 type AvailabilityRow = {
   id: string;
@@ -92,8 +92,17 @@ type AppointmentRow = {
   id: string;
   doctorId: string;
   patientId: string;
-  start: Date;
-  end: Date;
+  queueDate: Date;
+  token: number;
+  isWalkIn: boolean;
+  isPriority: boolean;
+  onHold: boolean;
+  arrivedAt: Date | null;
+  startedAt: Date | null;
+  doneAt: Date | null;
+  lastNotifiedMaxMinutes: number | null;
+  start: Date | null;
+  end: Date | null;
   status: string;
   createdAt: Date;
   updatedAt: Date;
@@ -113,6 +122,7 @@ function toDoctor(row: DoctorRow): Doctor {
     phone: row.phone,
     department: row.department,
     slotDurationMinutes: row.slotDurationMinutes,
+    avgConsultMinutes: row.avgConsultMinutes,
   };
 }
 
@@ -141,9 +151,18 @@ function toAppointment(row: AppointmentRow): Appointment {
     id: row.id,
     doctorId: row.doctorId,
     patientId: row.patientId,
+    queueDate: row.queueDate,
+    token: row.token,
+    isWalkIn: row.isWalkIn,
+    isPriority: row.isPriority,
+    onHold: row.onHold,
+    arrivedAt: row.arrivedAt,
+    startedAt: row.startedAt,
+    doneAt: row.doneAt,
+    status: toStatus(row.status),
+    lastNotifiedMaxMinutes: row.lastNotifiedMaxMinutes,
     start: row.start,
     end: row.end,
-    status: toStatus(row.status),
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -246,6 +265,9 @@ export class PrismaRepository implements Repository, StaffRepository {
           : {}),
         ...(patch.slotDurationMinutes !== undefined
           ? { slotDurationMinutes: patch.slotDurationMinutes }
+          : {}),
+        ...(patch.avgConsultMinutes !== undefined
+          ? { avgConsultMinutes: patch.avgConsultMinutes }
           : {}),
       },
     });
@@ -359,16 +381,42 @@ export class PrismaRepository implements Repository, StaffRepository {
     return row ? toAppointment(row) : null;
   }
 
-  async listAppointments(query: ListAppointmentsQuery): Promise<Appointment[]> {
+  async listQueueEntries(
+    doctorId: string,
+    queueDate: Date,
+  ): Promise<Appointment[]> {
     const rows = await this.db.appointment.findMany({
-      where: {
-        doctorId: query.doctorId,
-        start: { gte: query.from, lt: query.to },
-        ...(query.statuses ? { status: { in: query.statuses } } : {}),
-      },
-      orderBy: { start: "asc" },
+      where: { doctorId, queueDate },
+      orderBy: { token: "asc" },
     });
     return rows.map(toAppointment);
+  }
+
+  async nextToken(doctorId: string, queueDate: Date): Promise<number> {
+    const top = await this.db.appointment.aggregate({
+      where: { doctorId, queueDate },
+      _max: { token: true },
+    });
+    return (top._max.token ?? 0) + 1;
+  }
+
+  async claimNotification(
+    appointmentId: string,
+    kind: string,
+  ): Promise<boolean> {
+    try {
+      await this.db.notification.create({ data: { appointmentId, kind } });
+      return true;
+    } catch (err) {
+      // Unique (appointmentId, kind) violation -> already claimed.
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === "P2002"
+      ) {
+        return false;
+      }
+      throw err;
+    }
   }
 
   async listAppointmentViews(
@@ -376,19 +424,25 @@ export class PrismaRepository implements Repository, StaffRepository {
   ): Promise<AppointmentView[]> {
     const rows = await this.db.appointment.findMany({
       where: {
-        start: { gte: query.from, lt: query.to },
+        queueDate: query.date,
         ...(query.doctorId ? { doctorId: query.doctorId } : {}),
       },
-      orderBy: { start: "asc" },
+      orderBy: { token: "asc" },
       include: { doctor: true, patient: true },
     });
     return rows.map((row) => ({
       id: row.id,
       doctorId: row.doctorId,
       patientId: row.patientId,
-      start: row.start,
-      end: row.end,
+      queueDate: row.queueDate,
+      token: row.token,
+      isWalkIn: row.isWalkIn,
+      isPriority: row.isPriority,
+      onHold: row.onHold,
       status: toStatus(row.status),
+      arrivedAt: row.arrivedAt,
+      startedAt: row.startedAt,
+      doneAt: row.doneAt,
       createdAt: row.createdAt,
       doctorName: row.doctor.name,
       department: row.doctor.department,
@@ -400,7 +454,7 @@ export class PrismaRepository implements Repository, StaffRepository {
   async listAppointmentsForPatient(patientId: string): Promise<Appointment[]> {
     const rows = await this.db.appointment.findMany({
       where: { patientId },
-      orderBy: { start: "desc" }, // newest first
+      orderBy: [{ queueDate: "desc" }, { token: "desc" }], // newest first
     });
     return rows.map(toAppointment);
   }
@@ -410,67 +464,6 @@ export class PrismaRepository implements Repository, StaffRepository {
     return rows.map(toAppointment);
   }
 
-  async listUpcomingAppointmentsForPatient(
-    patientId: string,
-    from: Date,
-  ): Promise<Appointment[]> {
-    const rows = await this.db.appointment.findMany({
-      where: {
-        patientId,
-        status: Status.BOOKED,
-        start: { gte: from },
-      },
-      orderBy: { start: "asc" },
-    });
-    return rows.map(toAppointment);
-  }
-
-  async listBookedBetween(from: Date, to: Date): Promise<Appointment[]> {
-    const rows = await this.db.appointment.findMany({
-      where: { status: Status.BOOKED, start: { gt: from, lte: to } },
-      orderBy: { start: "asc" },
-    });
-    return rows.map(toAppointment);
-  }
-
-  async recordNotificationOnce(
-    appointmentId: string,
-    kind: string,
-  ): Promise<boolean> {
-    try {
-      await this.db.notification.create({ data: { appointmentId, kind } });
-      return true;
-    } catch (err) {
-      // Unique (appointmentId, kind) violation -> already recorded.
-      if (
-        err instanceof Prisma.PrismaClientKnownRequestError &&
-        err.code === "P2002"
-      ) {
-        return false;
-      }
-      throw err;
-    }
-  }
-
-  async deleteNotifications(
-    appointmentId: string,
-    kinds: string[],
-  ): Promise<void> {
-    await this.db.notification.deleteMany({
-      where: { appointmentId, kind: { in: kinds } },
-    });
-  }
-
-  async findBookedSlot(
-    doctorId: string,
-    start: Date,
-  ): Promise<Appointment | null> {
-    const row = await this.db.appointment.findFirst({
-      where: { doctorId, start, status: Status.BOOKED },
-    });
-    return row ? toAppointment(row) : null;
-  }
-
   async createAppointment(
     input: CreateAppointmentInput,
   ): Promise<Appointment> {
@@ -478,9 +471,12 @@ export class PrismaRepository implements Repository, StaffRepository {
       data: {
         doctorId: input.doctorId,
         patientId: input.patientId,
-        start: input.start,
-        end: input.end,
+        queueDate: input.queueDate,
+        token: input.token,
+        isWalkIn: input.isWalkIn,
+        isPriority: input.isPriority,
         status: input.status,
+        arrivedAt: input.arrivedAt ?? null,
       },
     });
     return toAppointment(row);
@@ -493,9 +489,16 @@ export class PrismaRepository implements Repository, StaffRepository {
     const row = await this.db.appointment.update({
       where: { id },
       data: {
-        ...(patch.start ? { start: patch.start } : {}),
-        ...(patch.end ? { end: patch.end } : {}),
-        ...(patch.status ? { status: patch.status } : {}),
+        ...(patch.status !== undefined ? { status: patch.status } : {}),
+        ...(patch.arrivedAt !== undefined ? { arrivedAt: patch.arrivedAt } : {}),
+        ...(patch.startedAt !== undefined ? { startedAt: patch.startedAt } : {}),
+        ...(patch.doneAt !== undefined ? { doneAt: patch.doneAt } : {}),
+        ...(patch.onHold !== undefined ? { onHold: patch.onHold } : {}),
+        ...(patch.token !== undefined ? { token: patch.token } : {}),
+        ...(patch.isPriority !== undefined ? { isPriority: patch.isPriority } : {}),
+        ...(patch.lastNotifiedMaxMinutes !== undefined
+          ? { lastNotifiedMaxMinutes: patch.lastNotifiedMaxMinutes }
+          : {}),
       },
     });
     return toAppointment(row);

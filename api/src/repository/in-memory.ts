@@ -11,7 +11,7 @@ import type {
   Doctor,
   Patient,
 } from "../domain/types.js";
-import { AppointmentStatus, BroadcastStatus } from "../domain/types.js";
+import { BroadcastStatus } from "../domain/types.js";
 import type { Staff } from "../auth/staff.js";
 import type {
   AppendEventInput,
@@ -27,7 +27,6 @@ import type {
   ListBroadcastsQuery,
   UpdateBroadcastInput,
   UpdatePatientInput,
-  ListAppointmentsQuery,
   Repository,
   UpdateAppointmentInput,
   UpdateDoctorInput,
@@ -48,8 +47,8 @@ export class InMemoryRepository implements Repository, StaffRepository {
   private readonly appointments = new Map<string, Appointment>();
   private readonly events: AppointmentEvent[] = [];
   private readonly staff = new Map<string, Staff>();
-  private readonly notifications = new Set<string>(); // `${appointmentId}::${kind}`
   private readonly broadcasts = new Map<string, Broadcast>();
+  private readonly notifications = new Set<string>(); // `${appointmentId}::${kind}`
 
   // --- test/seed helpers -------------------------------------------------
   addDoctor(doctor: Doctor): Doctor {
@@ -78,7 +77,11 @@ export class InMemoryRepository implements Repository, StaffRepository {
   }
 
   async createDoctor(input: CreateDoctorInput): Promise<Doctor> {
-    const doctor: Doctor = { id: randomUUID(), ...input };
+    const doctor: Doctor = {
+      id: randomUUID(),
+      avgConsultMinutes: input.avgConsultMinutes ?? 15,
+      ...input,
+    };
     this.doctors.set(doctor.id, clone(doctor));
     return clone(doctor);
   }
@@ -95,6 +98,9 @@ export class InMemoryRepository implements Repository, StaffRepository {
         : {}),
       ...(patch.slotDurationMinutes !== undefined
         ? { slotDurationMinutes: patch.slotDurationMinutes }
+        : {}),
+      ...(patch.avgConsultMinutes !== undefined
+        ? { avgConsultMinutes: patch.avgConsultMinutes }
         : {}),
     };
     this.doctors.set(id, clone(updated));
@@ -203,87 +209,31 @@ export class InMemoryRepository implements Repository, StaffRepository {
     return found ? clone(found) : null;
   }
 
-  async listAppointments(query: ListAppointmentsQuery): Promise<Appointment[]> {
-    const fromMs = query.from.getTime();
-    const toMs = query.to.getTime();
-    return [...this.appointments.values()]
-      .filter((a) => a.doctorId === query.doctorId)
-      .filter((a) => a.start.getTime() >= fromMs && a.start.getTime() < toMs)
-      .filter((a) => !query.statuses || query.statuses.includes(a.status))
-      .map(clone);
-  }
-
-  async listAppointmentViews(
-    query: AppointmentViewQuery,
-  ): Promise<AppointmentView[]> {
-    const fromMs = query.from.getTime();
-    const toMs = query.to.getTime();
-    const views: AppointmentView[] = [];
-    for (const a of this.appointments.values()) {
-      if (query.doctorId && a.doctorId !== query.doctorId) continue;
-      if (a.start.getTime() < fromMs || a.start.getTime() >= toMs) continue;
-      const doctor = this.doctors.get(a.doctorId);
-      const patient = this.patients.get(a.patientId);
-      views.push({
-        id: a.id,
-        doctorId: a.doctorId,
-        patientId: a.patientId,
-        start: a.start,
-        end: a.end,
-        status: a.status,
-        createdAt: a.createdAt,
-        doctorName: doctor?.name ?? "Unknown",
-        department: doctor?.department ?? "",
-        patientName: patient?.name ?? "Unknown",
-        patientPhone: patient?.phone ?? "",
-      });
-    }
-    views.sort((x, y) => x.start.getTime() - y.start.getTime());
-    return views.map(clone);
-  }
-
-  async listAppointmentsForPatient(patientId: string): Promise<Appointment[]> {
-    return [...this.appointments.values()]
-      .filter((a) => a.patientId === patientId)
-      .sort((x, y) => y.start.getTime() - x.start.getTime()) // newest first
-      .map(clone);
-  }
-
-  async listAllAppointments(): Promise<Appointment[]> {
-    return [...this.appointments.values()].map(clone);
-  }
-
-  async listUpcomingAppointmentsForPatient(
-    patientId: string,
-    from: Date,
+  async listQueueEntries(
+    doctorId: string,
+    queueDate: Date,
   ): Promise<Appointment[]> {
-    const fromMs = from.getTime();
+    const dayMs = queueDate.getTime();
     return [...this.appointments.values()]
       .filter(
-        (a) =>
-          a.patientId === patientId &&
-          a.status === AppointmentStatus.BOOKED &&
-          a.start.getTime() >= fromMs,
+        (a) => a.doctorId === doctorId && a.queueDate.getTime() === dayMs,
       )
-      .sort((x, y) => x.start.getTime() - y.start.getTime())
+      .sort((x, y) => x.token - y.token)
       .map(clone);
   }
 
-  async listBookedBetween(from: Date, to: Date): Promise<Appointment[]> {
-    const fromMs = from.getTime();
-    const toMs = to.getTime();
-    return [...this.appointments.values()]
-      .filter(
-        (a) =>
-          a.status === AppointmentStatus.BOOKED &&
-          a.start.getTime() > fromMs &&
-          a.start.getTime() <= toMs,
-      )
-      .sort((x, y) => x.start.getTime() - y.start.getTime())
-      .map(clone);
+  async nextToken(doctorId: string, queueDate: Date): Promise<number> {
+    const dayMs = queueDate.getTime();
+    let max = 0;
+    for (const a of this.appointments.values()) {
+      if (a.doctorId === doctorId && a.queueDate.getTime() === dayMs) {
+        if (a.token > max) max = a.token;
+      }
+    }
+    return max + 1;
   }
 
-  async recordNotificationOnce(
+  async claimNotification(
     appointmentId: string,
     kind: string,
   ): Promise<boolean> {
@@ -293,27 +243,49 @@ export class InMemoryRepository implements Repository, StaffRepository {
     return true;
   }
 
-  async deleteNotifications(
-    appointmentId: string,
-    kinds: string[],
-  ): Promise<void> {
-    for (const kind of kinds) {
-      this.notifications.delete(`${appointmentId}::${kind}`);
+  async listAppointmentViews(
+    query: AppointmentViewQuery,
+  ): Promise<AppointmentView[]> {
+    const dayMs = query.date.getTime();
+    const views: AppointmentView[] = [];
+    for (const a of this.appointments.values()) {
+      if (query.doctorId && a.doctorId !== query.doctorId) continue;
+      if (a.queueDate.getTime() !== dayMs) continue;
+      const doctor = this.doctors.get(a.doctorId);
+      const patient = this.patients.get(a.patientId);
+      views.push({
+        id: a.id,
+        doctorId: a.doctorId,
+        patientId: a.patientId,
+        queueDate: a.queueDate,
+        token: a.token,
+        isWalkIn: a.isWalkIn,
+        isPriority: a.isPriority,
+        onHold: a.onHold,
+        status: a.status,
+        arrivedAt: a.arrivedAt,
+        startedAt: a.startedAt,
+        doneAt: a.doneAt,
+        createdAt: a.createdAt,
+        doctorName: doctor?.name ?? "Unknown",
+        department: doctor?.department ?? "",
+        patientName: patient?.name ?? "Unknown",
+        patientPhone: patient?.phone ?? "",
+      });
     }
+    views.sort((x, y) => x.token - y.token);
+    return views.map(clone);
   }
 
-  async findBookedSlot(
-    doctorId: string,
-    start: Date,
-  ): Promise<Appointment | null> {
-    const startMs = start.getTime();
-    const found = [...this.appointments.values()].find(
-      (a) =>
-        a.doctorId === doctorId &&
-        a.status === AppointmentStatus.BOOKED &&
-        a.start.getTime() === startMs,
-    );
-    return found ? clone(found) : null;
+  async listAppointmentsForPatient(patientId: string): Promise<Appointment[]> {
+    return [...this.appointments.values()]
+      .filter((a) => a.patientId === patientId)
+      .sort((x, y) => y.queueDate.getTime() - x.queueDate.getTime() || y.token - x.token)
+      .map(clone);
+  }
+
+  async listAllAppointments(): Promise<Appointment[]> {
+    return [...this.appointments.values()].map(clone);
   }
 
   async createAppointment(
@@ -324,9 +296,18 @@ export class InMemoryRepository implements Repository, StaffRepository {
       id: randomUUID(),
       doctorId: input.doctorId,
       patientId: input.patientId,
-      start: input.start,
-      end: input.end,
+      queueDate: input.queueDate,
+      token: input.token,
+      isWalkIn: input.isWalkIn,
+      isPriority: input.isPriority,
+      onHold: false,
+      arrivedAt: input.arrivedAt ?? null,
+      startedAt: null,
+      doneAt: null,
       status: input.status,
+      lastNotifiedMaxMinutes: null,
+      start: null,
+      end: null,
       createdAt: now,
       updatedAt: now,
     };
@@ -342,9 +323,16 @@ export class InMemoryRepository implements Repository, StaffRepository {
     if (!existing) throw new Error(`Appointment ${id} not found`);
     const updated: Appointment = {
       ...existing,
-      ...(patch.start ? { start: patch.start } : {}),
-      ...(patch.end ? { end: patch.end } : {}),
-      ...(patch.status ? { status: patch.status } : {}),
+      ...(patch.status !== undefined ? { status: patch.status } : {}),
+      ...(patch.arrivedAt !== undefined ? { arrivedAt: patch.arrivedAt } : {}),
+      ...(patch.startedAt !== undefined ? { startedAt: patch.startedAt } : {}),
+      ...(patch.doneAt !== undefined ? { doneAt: patch.doneAt } : {}),
+      ...(patch.onHold !== undefined ? { onHold: patch.onHold } : {}),
+      ...(patch.token !== undefined ? { token: patch.token } : {}),
+      ...(patch.isPriority !== undefined ? { isPriority: patch.isPriority } : {}),
+      ...(patch.lastNotifiedMaxMinutes !== undefined
+        ? { lastNotifiedMaxMinutes: patch.lastNotifiedMaxMinutes }
+        : {}),
       updatedAt: new Date(),
     };
     this.appointments.set(id, clone(updated));

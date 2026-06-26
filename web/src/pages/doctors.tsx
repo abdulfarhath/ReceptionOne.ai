@@ -79,7 +79,7 @@ export function DoctorsPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <p className="text-sm text-muted-foreground">
-                  {doctor.slotDurationMinutes}-minute slots
+                  {doctor.avgConsultMinutes}-min avg consult
                   {doctor.phone ? ` • ${doctor.phone}` : ""}
                 </p>
                 <div className="flex gap-2">

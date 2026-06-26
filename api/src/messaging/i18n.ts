@@ -50,7 +50,14 @@ type TranslationKey =
   | "menu_hint"
   | "err_slot_taken"
   | "err_time_unavailable"
-  | "err_generic";
+  | "err_generic"
+  | "confirm_join_prompt"
+  | "queue_joined"
+  | "queue_status"
+  | "queue_none"
+  | "queue_arrived"
+  | "queue_youre_next"
+  | "queue_slip";
 
 const dict: Record<Language, Record<TranslationKey, string>> = {
   en: {
@@ -104,6 +111,13 @@ const dict: Record<Language, Record<TranslationKey, string>> = {
     err_slot_taken: "Sorry, that time was just taken. Let's pick another.",
     err_time_unavailable: "That time isn't available anymore. Let's pick another.",
     err_generic: "Sorry, I couldn't find that. Let's start over.",
+    confirm_join_prompt: "{doctor}: about {min}–{max} min wait, suggested arrival ~{arrival}. Book? Tap Yes/No.",
+    queue_joined: "Booked with {doctor}. About {min}–{max} min wait — aim to arrive by {arrival}. Send 'status' anytime.",
+    queue_status: "{doctor}: about {min}–{max} min wait, suggested arrival ~{arrival}.",
+    queue_none: "You have no active tokens today.",
+    queue_arrived: "Checked in ✓ for {doctor} — about {min}–{max} min now.",
+    queue_youre_next: "You're next for {doctor}! Please be ready.",
+    queue_slip: "{doctor} is running a little behind — now about {min}–{max} min.",
   },
   te: {
     language_prompt: "Please choose your language / దయచేసి మీ భాషను ఎంచుకోండి / कृपया अपनी भाषा चुनें",
@@ -156,6 +170,13 @@ const dict: Record<Language, Record<TranslationKey, string>> = {
     err_slot_taken: "క్షమించండి, ఆ సమయం ఇప్పుడే బుక్ అయ్యింది. మరో సమయం ఎంచుకుందాం.",
     err_time_unavailable: "ఆ సమయం ఇప్పుడు అందుబాటులో లేదు. మరో సమయం ఎంచుకుందాం.",
     err_generic: "క్షమించండి, అది కనుగొనలేకపోయాను. మళ్ళీ మొదలుపెడదాం.",
+    confirm_join_prompt: "{doctor}: సుమారు {min}–{max} నిమి. వెయిట్, రావాల్సిన సమయం ~{arrival}. బుక్ చేయాలా? Yes/No నొక్కండి.",
+    queue_joined: "{doctor} గారితో బుక్ అయింది. సుమారు {min}–{max} నిమి. వెయిట్ — {arrival} కల్లా రండి. 'status' అని పంపండి.",
+    queue_status: "{doctor}: సుమారు {min}–{max} నిమి. వెయిట్, రావాల్సిన సమయం ~{arrival}.",
+    queue_none: "ఈరోజు మీకు యాక్టివ్ టోకెన్‌లు లేవు.",
+    queue_arrived: "{doctor} కోసం చెక్-ఇన్ ✓ — ఇప్పుడు సుమారు {min}–{max} నిమి.",
+    queue_youre_next: "{doctor} కోసం మీరు తదుపరి! సిద్ధంగా ఉండండి.",
+    queue_slip: "{doctor} కొంచెం ఆలస్యంగా ఉన్నారు — ఇప్పుడు సుమారు {min}–{max} నిమి.",
   },
   hi: {
     language_prompt: "Please choose your language / దయచేసి మీ భాషను ఎంచుకోండి / कृपया अपनी भाषा चुनें",
@@ -208,6 +229,13 @@ const dict: Record<Language, Record<TranslationKey, string>> = {
     err_slot_taken: "क्षमा करें, वह समय अभी-अभी बुक हो गया। चलिए दूसरा चुनें।",
     err_time_unavailable: "वह समय अब उपलब्ध नहीं है। चलिए दूसरा चुनें।",
     err_generic: "क्षमा करें, मुझे वह नहीं मिला। चलिए फिर से शुरू करें।",
+    confirm_join_prompt: "{doctor}: लगभग {min}–{max} मिनट प्रतीक्षा, सुझाया आगमन ~{arrival}. बुक करें? Yes/No दबाएं.",
+    queue_joined: "{doctor} के साथ बुक हुआ। लगभग {min}–{max} मिनट प्रतीक्षा — {arrival} तक पहुँचें। 'status' भेजें।",
+    queue_status: "{doctor}: लगभग {min}–{max} मिनट प्रतीक्षा, सुझाया आगमन ~{arrival}।",
+    queue_none: "आज आपके पास कोई सक्रिय टोकन नहीं है।",
+    queue_arrived: "{doctor} के लिए चेक-इन ✓ — अब लगभग {min}–{max} मिनट।",
+    queue_youre_next: "{doctor} के लिए आपकी बारी अगली है! तैयार रहें।",
+    queue_slip: "{doctor} थोड़ा देरी से चल रहे हैं — अब लगभग {min}–{max} मिनट।",
   }
 };
 

@@ -37,20 +37,24 @@ model Doctor {
   name                String
   phone               String?
   department          String
-  slotDurationMinutes Int
+  slotDurationMinutes Int // legacy (slot model removed); kept for back-compat
+  avgConsultMinutes   Int            @default(15) // drives queue wait estimates
   availability        Availability[]
   appointments        Appointment[]
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt
 }
 
+// Reinterpreted as a SESSION window: which weekdays the queue is open and the
+// open/close clock times. startMinutes is the session start used for arrival
+// estimates. No discrete slots are generated from this.
 model Availability {
   id           String @id @default(cuid())
   doctorId     String
   doctor       Doctor @relation(fields: [doctorId], references: [id], onDelete: Cascade)
   dayOfWeek    Int // 0=Sun .. 6=Sat
-  startMinutes Int // minutes from midnight (UTC)
-  endMinutes   Int
+  startMinutes Int // session open, minutes from midnight (UTC)
+  endMinutes   Int // session close, minutes from midnight (UTC)
 
   @@index([doctorId, dayOfWeek])
 }
@@ -66,21 +70,38 @@ model Patient {
   updatedAt    DateTime      @updatedAt
 }
 
+// A live queue entry (one queue per doctor per queueDate). The slot model is
+// gone: there is no start/end time, only a token and lifecycle timestamps.
 model Appointment {
-  id        String             @id @default(cuid())
+  id        String  @id @default(cuid())
   doctorId  String
-  doctor    Doctor             @relation(fields: [doctorId], references: [id])
+  doctor    Doctor  @relation(fields: [doctorId], references: [id])
   patientId String
-  patient   Patient            @relation(fields: [patientId], references: [id])
-  start         DateTime // UTC
-  end           DateTime // UTC
-  status        String // BOOKED | CANCELLED | COMPLETED
+  patient   Patient @relation(fields: [patientId], references: [id])
+
+  queueDate  DateTime // the clinic day this entry belongs to (UTC midnight)
+  token      Int // per doctor per queueDate, starting at 1
+  isWalkIn   Boolean  @default(false)
+  isPriority Boolean  @default(false)
+  onHold     Boolean  @default(false) // absent when called; board skips it
+
+  arrivedAt DateTime? // checked in
+  startedAt DateTime? // consult began
+  doneAt    DateTime? // consult ended
+
+  lastNotifiedMaxMinutes Int? // last max-wait told to the patient (slip re-notify)
+
+  start DateTime? // legacy (slot model removed)
+  end   DateTime? // legacy
+
+  status        String // WAITING | ARRIVED | IN_PROGRESS | DONE | NO_SHOW | CANCELLED
   events        AppointmentEvent[]
   notifications Notification[]
   createdAt     DateTime           @default(now())
   updatedAt     DateTime           @updatedAt
 
-  @@index([doctorId, start])
+  @@unique([doctorId, queueDate, token])
+  @@index([doctorId, queueDate])
 }
 
 model AppointmentEvent {

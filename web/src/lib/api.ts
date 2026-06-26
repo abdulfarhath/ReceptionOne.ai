@@ -4,22 +4,21 @@ import type { z } from "zod";
 
 import {
   analyticsSchema,
-  appointmentSchema,
-  appointmentViewSchema,
   availabilitySchema,
   broadcastSchema,
   broadcastStatsSchema,
   doctorInsightsSchema,
   doctorSchema,
+  joinResultSchema,
   patientDetailSchema,
   patientLookupSchema,
   patientSchema,
   patientsDirectorySchema,
-  slotsResponseSchema,
+  queueBoardSchema,
+  queueEntrySchema,
+  quoteResultSchema,
   staffProfileSchema,
   type Analytics,
-  type Appointment,
-  type AppointmentView,
   type Availability,
   type Broadcast,
   type BroadcastCategory,
@@ -28,9 +27,13 @@ import {
   type BroadcastStatus,
   type Doctor,
   type DoctorInsights,
+  type JoinResult,
   type Patient,
   type PatientDetail,
   type PatientSummary,
+  type QueueBoard,
+  type QueueEntry,
+  type QuoteResult,
   type StaffProfile,
 } from "./schemas";
 
@@ -129,14 +132,19 @@ export function createDoctor(input: {
   name: string;
   phone?: string | null;
   department: string;
-  slotDurationMinutes: number;
+  avgConsultMinutes: number;
 }): Promise<Doctor> {
   return request("/api/doctors", doctorSchema, { method: "POST", body: input });
 }
 
 export function updateDoctor(
   id: string,
-  patch: { name?: string; phone?: string | null; department?: string; slotDurationMinutes?: number },
+  patch: {
+    name?: string;
+    phone?: string | null;
+    department?: string;
+    avgConsultMinutes?: number;
+  },
 ): Promise<Doctor> {
   return request(`/api/doctors/${id}`, doctorSchema, {
     method: "PATCH",
@@ -156,13 +164,6 @@ export function replaceAvailability(
     method: "PUT",
     body: { windows },
   });
-}
-
-export async function getSlots(doctorId: string, date: string): Promise<string[]> {
-  const res = await request(`/api/doctors/${doctorId}/slots`, slotsResponseSchema, {
-    query: { date },
-  });
-  return res.slots;
 }
 
 /** Monthly demand analytics for a doctor. `month` is "YYYY-MM" (default: current). */
@@ -220,41 +221,62 @@ export function createBroadcast(input: {
   });
 }
 
-// --- Appointments --------------------------------------------------------
-export function listAppointments(
-  date: string,
-  doctorId?: string,
-  to?: string,
-): Promise<AppointmentView[]> {
-  return request("/api/appointments", appointmentViewSchema.array(), {
-    query: { date, to, doctorId },
+// --- Queue ---------------------------------------------------------------
+/** Grouped live queue board for one doctor. */
+export function getQueue(doctorId: string, date?: string): Promise<QueueBoard> {
+  return request(`/api/doctors/${doctorId}/queue`, queueBoardSchema, {
+    query: { date },
   });
 }
 
-export function bookAppointment(input: {
+/** Estimate before booking (people ahead, wait, suggested arrival). */
+export function quoteQueue(doctorId: string, date?: string): Promise<QuoteResult> {
+  return request(`/api/doctors/${doctorId}/quote`, quoteResultSchema, {
+    query: { date },
+  });
+}
+
+export function joinQueue(input: {
   doctorId: string;
-  patientId: string;
-  start: string;
-}): Promise<Appointment> {
-  return request("/api/appointments", appointmentSchema, {
+  patientName: string;
+  patientPhone: string;
+  date?: string;
+  isPriority?: boolean;
+  isWalkIn?: boolean;
+  priorityReason?: string;
+}): Promise<JoinResult> {
+  return request("/api/bookings", joinResultSchema, {
     method: "POST",
     body: input,
   });
 }
 
-export function cancelAppointment(id: string): Promise<Appointment> {
-  return request(`/api/appointments/${id}/cancel`, appointmentSchema, {
+export type QueueAction =
+  | "checkin"
+  | "start"
+  | "complete"
+  | "no-show"
+  | "cancel"
+  | "hold";
+
+/** Run a lifecycle transition on a booking. */
+export function queueAction(id: string, action: QueueAction): Promise<QueueEntry> {
+  return request(`/api/bookings/${id}/${action}`, queueEntrySchema, {
     method: "POST",
   });
 }
 
-export function rescheduleAppointment(
+export type ReinstateMode = "back" | "priority";
+
+/** Reinstate a late no-show: fresh token ("back") or priority. Reason required. */
+export function reinstateBooking(
   id: string,
-  startIso: string,
-): Promise<Appointment> {
-  return request(`/api/appointments/${id}/reschedule`, appointmentSchema, {
+  mode: ReinstateMode,
+  reason: string,
+): Promise<QueueEntry> {
+  return request(`/api/bookings/${id}/reinstate`, queueEntrySchema, {
     method: "POST",
-    body: { start: startIso },
+    body: { mode, reason },
   });
 }
 

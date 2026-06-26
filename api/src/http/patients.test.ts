@@ -35,6 +35,7 @@ async function buildApp() {
     phone: null,
     department: "General",
     slotDurationMinutes: 30,
+    avgConsultMinutes: 10,
   });
   const patient = repo.addPatient({
     id: "pat1",
@@ -43,17 +44,20 @@ async function buildApp() {
     language: "en",
     consentAt: PAST,
   });
-  const mk = (start: Date, status: AppointmentStatus) =>
+  let token = 0;
+  const mk = (queueDate: Date, status: AppointmentStatus) =>
     repo.createAppointment({
       doctorId: doctor.id,
       patientId: patient.id,
-      start,
-      end: new Date(start.getTime() + 30 * 60_000),
+      queueDate,
+      token: ++token,
+      isWalkIn: false,
+      isPriority: false,
       status,
     });
-  await mk(PAST, AppointmentStatus.COMPLETED);
-  await mk(FUTURE, AppointmentStatus.BOOKED);
-  await mk(new Date("2021-05-01T09:00:00.000Z"), AppointmentStatus.CANCELLED);
+  await mk(PAST, AppointmentStatus.DONE);
+  await mk(FUTURE, AppointmentStatus.WAITING);
+  await mk(new Date("2021-05-01T00:00:00.000Z"), AppointmentStatus.CANCELLED);
 
   return { app: createApp({ repo, config, logger }), patientId: patient.id };
 }
@@ -80,7 +84,7 @@ describe("patient history endpoints", () => {
     expect(res.body.patients[0]).toMatchObject({
       name: "Riya Sharma",
       total: 3,
-      upcoming: 1,
+      active: 1,
       completed: 1,
       cancelled: 1,
     });

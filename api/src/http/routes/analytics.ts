@@ -1,17 +1,15 @@
-// Operational analytics dashboard endpoint. Aggregates the real appointments +
-// availability datasets into doctor utilization, demand trends, an hour×weekday
-// heatmap, and patient insights. All clinic-timezone (IST) bucketing lives here
-// at the HTTP boundary; the pure maths lives in ../../domain/analytics.
+// Operational analytics dashboard endpoint. Aggregates the real queue dataset
+// into per-doctor activity, demand trends, an hour×weekday heatmap, and patient
+// insights. All clinic-timezone (IST) bucketing lives here at the HTTP boundary;
+// the pure maths lives in ../../domain/analytics.
 
 import { Router } from "express";
 
-import type { Appointment, Availability } from "../../domain/types.js";
 import {
-  isEstimatedNoShow,
-  isVisit,
-  openSlotCount,
+  avgConsultMinutes,
+  isAttended,
+  isNoShow,
   patientInsights,
-  slotCapacity,
 } from "../../domain/analytics.js";
 import { ah } from "../async-handler.js";
 import type { AppDeps } from "../deps.js";
@@ -41,9 +39,8 @@ const monthLabelFmt = new Intl.DateTimeFormat("en-IN", {
 });
 
 interface IstParts {
-  dateKey: string; // YYYY-MM-DD in IST
-  weekday: number; // 0=Sun..6=Sat (matches Availability.dayOfWeek)
-  hour: number; // 0..23 in IST
+  dateKey: string;
+  hour: number;
 }
 
 function istParts(d: Date): IstParts {
@@ -51,13 +48,10 @@ function istParts(d: Date): IstParts {
   for (const p of partsFmt.formatToParts(d)) map[p.type] = p.value;
   const dateKey = `${map.year}-${map.month}-${map.day}`;
   let hour = Number.parseInt(map.hour ?? "0", 10);
-  if (hour === 24) hour = 0; // some engines render midnight as "24"
-  const weekday = new Date(`${dateKey}T00:00:00.000Z`).getUTCDay();
-  return { dateKey, weekday, hour };
+  if (hour === 24) hour = 0;
+  return { dateKey, hour };
 }
 
-const dayStartMsOf = (dateKey: string): number =>
-  new Date(`${dateKey}T00:00:00.000Z`).getTime();
 const weekdayOf = (dateKey: string): number =>
   new Date(`${dateKey}T00:00:00.000Z`).getUTCDay();
 
@@ -67,7 +61,7 @@ function shiftDateKey(dateKey: string, deltaDays: number): string {
   return d.toISOString().slice(0, 10);
 }
 function mondayOf(dateKey: string): string {
-  const since = (weekdayOf(dateKey) + 6) % 7; // days since Monday
+  const since = (weekdayOf(dateKey) + 6) % 7;
   return shiftDateKey(dateKey, -since);
 }
 function shiftMonthKey(monthKey: string, delta: number): string {
@@ -80,17 +74,6 @@ const dayLabel = (dateKey: string): string =>
 const monthLabel = (monthKey: string): string =>
   monthLabelFmt.format(new Date(`${monthKey}-15T12:00:00.000Z`));
 
-function groupBy<T>(items: T[], key: (item: T) => string): Map<string, T[]> {
-  const out = new Map<string, T[]>();
-  for (const item of items) {
-    const k = key(item);
-    const list = out.get(k);
-    if (list) list.push(item);
-    else out.set(k, [item]);
-  }
-  return out;
-}
-
 /** Read-only operational analytics — any authenticated staff. */
 export function analyticsRouter(deps: AppDeps): Router {
   const router = Router();
@@ -100,52 +83,45 @@ export function analyticsRouter(deps: AppDeps): Router {
     "/dashboard",
     ah(async (_req, res) => {
       const now = new Date();
-      const nowMs = now.getTime();
       const todayKey = istParts(now).dateKey;
 
-      const [doctors, appointments, availability] = await Promise.all([
+      const [doctors, appointments] = await Promise.all([
         deps.repo.listDoctors(),
         deps.repo.listAllAppointments(),
-        deps.repo.listAllAvailability(),
       ]);
 
-      const apptsByDoctor = groupBy(appointments, (a) => a.doctorId);
-      const availByDoctor = groupBy(availability, (a) => a.doctorId);
-
-      // ---- Demand tallies (visits only), keyed in IST ----
+      // Demand = tokens joined. Day/week/month bucket by queueDate (the clinic
+      // day); hour-of-day / heatmap bucket by createdAt (when the token was taken).
       const daily = new Map<string, number>();
       const weekly = new Map<string, number>();
       const monthly = new Map<string, number>();
       const hourly = new Map<number, number>();
       const weekdayTally = new Map<number, number>();
-      const cells = new Map<string, number>(); // `${weekday}:${hour}`
-
+      const cells = new Map<string, number>();
       const bump = <K>(m: Map<K, number>, k: K) => m.set(k, (m.get(k) ?? 0) + 1);
 
       for (const a of appointments) {
-        if (!isVisit(a)) continue;
-        const { dateKey, weekday, hour } = istParts(a.start);
-        bump(daily, dateKey);
-        bump(weekly, mondayOf(dateKey));
-        bump(monthly, dateKey.slice(0, 7));
+        const dayKey = istParts(a.queueDate).dateKey;
+        const weekday = weekdayOf(dayKey);
+        const hour = istParts(a.createdAt).hour;
+        bump(daily, dayKey);
+        bump(weekly, mondayOf(dayKey));
+        bump(monthly, dayKey.slice(0, 7));
+        bump(weekdayTally, weekday);
         if (hour >= HOURS[0]! && hour <= HOURS[HOURS.length - 1]!) {
           bump(hourly, hour);
           bump(cells, `${weekday}:${hour}`);
         }
-        bump(weekdayTally, weekday);
       }
 
-      // Ordered key ranges (oldest -> newest).
       const dailyKeys = Array.from({ length: 30 }, (_, i) =>
         shiftDateKey(todayKey, -(29 - i)),
       );
-      const thisMonday = mondayOf(todayKey);
       const weeklyKeys = Array.from({ length: 12 }, (_, i) =>
-        shiftDateKey(thisMonday, -7 * (11 - i)),
+        shiftDateKey(mondayOf(todayKey), -7 * (11 - i)),
       );
-      const thisMonthKey = todayKey.slice(0, 7);
       const monthlyKeys = Array.from({ length: 12 }, (_, i) =>
-        shiftMonthKey(thisMonthKey, -(11 - i)),
+        shiftMonthKey(todayKey.slice(0, 7), -(11 - i)),
       );
 
       const demand = {
@@ -171,7 +147,6 @@ export function analyticsRouter(deps: AppDeps): Router {
         })),
       };
 
-      // ---- Heatmap (weekday × hour) ----
       let heatmapMax = 0;
       const heatmapCells: { weekday: number; hour: number; bookings: number }[] =
         [];
@@ -183,66 +158,29 @@ export function analyticsRouter(deps: AppDeps): Router {
         }
       }
 
-      // ---- Per-doctor utilization ----
-      const todayWeekday = weekdayOf(todayKey);
-      const todayStartMs = dayStartMsOf(todayKey);
+      // ---- Per-doctor queue activity ----
+      const byDoctor = new Map<string, typeof appointments>();
+      for (const a of appointments) {
+        const list = byDoctor.get(a.doctorId);
+        if (list) list.push(a);
+        else byDoctor.set(a.doctorId, [a]);
+      }
 
       const doctorsOut = doctors.map((doc) => {
-        const docAppts = apptsByDoctor.get(doc.id) ?? [];
-        const windows: Availability[] = availByDoctor.get(doc.id) ?? [];
-        const windowsToday = windows.filter((w) => w.dayOfWeek === todayWeekday);
-        const capacityToday = slotCapacity(windowsToday, doc.slotDurationMinutes);
-
-        // BOOKED start times per IST day occupy slots (for open-slot maths).
-        const bookedByDay = new Map<string, Set<number>>();
-        let bookedToday = 0;
-        for (const a of docAppts) {
-          const { dateKey } = istParts(a.start);
-          if (a.status === "BOOKED") {
-            const set = bookedByDay.get(dateKey) ?? new Set<number>();
-            set.add(a.start.getTime());
-            bookedByDay.set(dateKey, set);
-          }
-          if (dateKey === todayKey && isVisit(a)) bookedToday++;
-        }
-
-        const openToday = openSlotCount(
-          windowsToday,
-          doc.slotDurationMinutes,
-          todayStartMs,
-          bookedByDay.get(todayKey) ?? new Set(),
-          nowMs,
+        const docAppts = byDoctor.get(doc.id) ?? [];
+        const todays = docAppts.filter(
+          (a) => istParts(a.queueDate).dateKey === todayKey,
         );
-
-        let openThisWeek = 0;
-        for (let i = 0; i < 7; i++) {
-          const dk = shiftDateKey(todayKey, i);
-          const ws = windows.filter((w) => w.dayOfWeek === weekdayOf(dk));
-          openThisWeek += openSlotCount(
-            ws,
-            doc.slotDurationMinutes,
-            dayStartMsOf(dk),
-            bookedByDay.get(dk) ?? new Set(),
-            nowMs,
-          );
-        }
-
         return {
           id: doc.id,
           name: doc.name,
           department: doc.department,
-          bookedToday,
-          capacityToday,
-          utilizationPct:
-            capacityToday > 0
-              ? Math.round((bookedToday / capacityToday) * 100)
-              : 0,
-          openToday,
-          openThisWeek,
-          totalBooked: docAppts.filter(isVisit).length,
-          estNoShows: docAppts.filter((a: Appointment) =>
-            isEstimatedNoShow(a, nowMs),
-          ).length,
+          joinedToday: todays.length,
+          doneToday: todays.filter(isAttended).length,
+          noShowToday: todays.filter(isNoShow).length,
+          totalDone: docAppts.filter(isAttended).length,
+          noShows: docAppts.filter(isNoShow).length,
+          avgConsultMinutes: avgConsultMinutes(docAppts),
         };
       });
 

@@ -53,7 +53,7 @@ export function AnalyticsPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Analytics</h1>
           <p className="text-muted-foreground">
-            Doctor utilization, demand trends, and patient insights — live from
+            Doctor activity, demand trends, and patient insights — live from
             the appointments dataset.
             {query.data ? ` As of ${formatLongDate(query.data.generatedAt)}.` : ""}
           </p>
@@ -81,9 +81,9 @@ export function AnalyticsPage() {
         />
       ) : query.data ? (
         <div className="space-y-5">
-          {/* 1. Doctor utilization */}
+          {/* 1. Doctor activity */}
           <section className="space-y-3">
-            <h2 className="text-lg font-semibold">Doctor utilization (today)</h2>
+            <h2 className="text-lg font-semibold">Doctor activity (today)</h2>
             <UtilizationCards doctors={query.data.doctors} />
           </section>
 
@@ -130,7 +130,7 @@ export function AnalyticsPage() {
             {/* 5. Leaderboard */}
             <Section
               title="Doctor leaderboard"
-              description="Rank by bookings, utilization, or no-shows."
+              description="Rank by visits seen, no-shows, or consult speed."
             >
               <Leaderboard doctors={query.data.doctors} />
             </Section>

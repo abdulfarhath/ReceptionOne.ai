@@ -1,5 +1,5 @@
 import { Card, CardContent } from "@/components/ui/card";
-import type { DoctorUtilization } from "@/lib/schemas";
+import type { DoctorActivity } from "@/lib/schemas";
 import { CHART } from "./theme";
 
 /** SVG circular gauge for a 0–100 percentage. */
@@ -64,13 +64,13 @@ function Gauge({ value }: { value: number }) {
         fill={CHART.axis}
         style={{ fontSize: 9 }}
       >
-        util
+        seen
       </text>
     </svg>
   );
 }
 
-function Metric({ label, value }: { label: string; value: number }) {
+function Metric({ label, value }: { label: string; value: number | string }) {
   return (
     <div className="rounded-md bg-muted/40 px-2 py-1.5">
       <div className="text-base font-semibold tabular-nums leading-none">
@@ -83,7 +83,7 @@ function Metric({ label, value }: { label: string; value: number }) {
   );
 }
 
-export function UtilizationCards({ doctors }: { doctors: DoctorUtilization[] }) {
+export function UtilizationCards({ doctors }: { doctors: DoctorActivity[] }) {
   if (doctors.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">No doctors to report on.</p>
@@ -91,25 +91,37 @@ export function UtilizationCards({ doctors }: { doctors: DoctorUtilization[] }) 
   }
   return (
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-      {doctors.map((d) => (
-        <Card key={d.id}>
-          <CardContent className="flex items-center gap-3 p-3">
-            <Gauge value={d.utilizationPct} />
-            <div className="min-w-0 flex-1">
-              <div className="truncate font-medium leading-tight">{d.name}</div>
-              <div className="truncate text-xs text-muted-foreground">
-                {d.department}
+      {doctors.map((d) => {
+        // Today's completion rate drives the gauge (seen vs joined).
+        const seenPct =
+          d.joinedToday > 0 ? Math.round((d.doneToday / d.joinedToday) * 100) : 0;
+        return (
+          <Card key={d.id}>
+            <CardContent className="flex items-center gap-3 p-3">
+              <Gauge value={seenPct} />
+              <div className="min-w-0 flex-1">
+                <div className="truncate font-medium leading-tight">{d.name}</div>
+                <div className="truncate text-xs text-muted-foreground">
+                  {d.department}
+                </div>
+                <div className="mt-2 grid grid-cols-2 gap-1.5">
+                  <Metric label="Joined today" value={d.joinedToday} />
+                  <Metric label="Seen today" value={d.doneToday} />
+                  <Metric label="No-shows today" value={d.noShowToday} />
+                  <Metric
+                    label="Avg consult"
+                    value={
+                      d.avgConsultMinutes === null
+                        ? "—"
+                        : `${d.avgConsultMinutes}m`
+                    }
+                  />
+                </div>
               </div>
-              <div className="mt-2 grid grid-cols-2 gap-1.5">
-                <Metric label="Booked today" value={d.bookedToday} />
-                <Metric label="Slots today" value={d.capacityToday} />
-                <Metric label="Open today" value={d.openToday} />
-                <Metric label="Open this week" value={d.openThisWeek} />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      ))}
+            </CardContent>
+          </Card>
+        );
+      })}
     </div>
   );
 }

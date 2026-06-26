@@ -5,7 +5,8 @@ export type DomainErrorCode =
   | "SLOT_UNAVAILABLE"
   | "OUTSIDE_HOURS"
   | "PAST_TIME"
-  | "NOT_FOUND";
+  | "NOT_FOUND"
+  | "INVALID_TRANSITION";
 
 export abstract class DomainError extends Error {
   abstract readonly code: DomainErrorCode;
@@ -34,4 +35,9 @@ export class PastTimeError extends DomainError {
 /** A referenced entity (doctor, patient, appointment) does not exist. */
 export class NotFoundError extends DomainError {
   readonly code = "NOT_FOUND";
+}
+
+/** An illegal queue-entry status transition was attempted. */
+export class InvalidTransitionError extends DomainError {
+  readonly code = "INVALID_TRANSITION";
 }

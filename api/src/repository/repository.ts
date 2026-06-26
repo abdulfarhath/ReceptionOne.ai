@@ -20,6 +20,7 @@ export interface CreateDoctorInput {
   phone?: string | null;
   department: string;
   slotDurationMinutes: number;
+  avgConsultMinutes?: number;
 }
 
 export interface CreateAvailabilityInput {
@@ -41,6 +42,7 @@ export interface UpdateDoctorInput {
   phone?: string | null;
   department?: string;
   slotDurationMinutes?: number;
+  avgConsultMinutes?: number;
 }
 
 export interface UpdatePatientInput {
@@ -57,22 +59,28 @@ export interface AvailabilityDraft {
 }
 
 export interface AppointmentViewQuery {
-  from: Date;
-  to: Date;
+  /** The queue day (UTC midnight). */
+  date: Date;
   doctorId?: string;
 }
 
 /**
- * Denormalized read model for the dashboard: an appointment joined with its
- * doctor and patient. A read-only view — writes still go through the core.
+ * Denormalized read model for the dashboard board: a queue entry joined with its
+ * doctor and patient. Read-only — writes still go through the core.
  */
 export interface AppointmentView {
   id: string;
   doctorId: string;
   patientId: string;
-  start: Date;
-  end: Date;
+  queueDate: Date;
+  token: number;
+  isWalkIn: boolean;
+  isPriority: boolean;
+  onHold: boolean;
   status: AppointmentStatus;
+  arrivedAt: Date | null;
+  startedAt: Date | null;
+  doneAt: Date | null;
   createdAt: Date;
   doctorName: string;
   department: string;
@@ -83,31 +91,30 @@ export interface AppointmentView {
 export interface CreateAppointmentInput {
   doctorId: string;
   patientId: string;
-  start: Date;
-  end: Date;
+  queueDate: Date;
+  token: number;
+  isWalkIn: boolean;
+  isPriority: boolean;
   status: AppointmentStatus;
+  arrivedAt?: Date | null;
 }
 
 export interface UpdateAppointmentInput {
-  start?: Date;
-  end?: Date;
   status?: AppointmentStatus;
+  arrivedAt?: Date | null;
+  startedAt?: Date | null;
+  doneAt?: Date | null;
+  onHold?: boolean;
+  /** Reinstate to the back of the queue assigns a fresh token. */
+  token?: number;
+  isPriority?: boolean;
+  lastNotifiedMaxMinutes?: number | null;
 }
 
 export interface AppendEventInput {
   appointmentId: string;
   type: AppointmentEventType;
   metadata: Record<string, unknown> | null;
-}
-
-export interface ListAppointmentsQuery {
-  doctorId: string;
-  /** Inclusive lower bound on Appointment.start. */
-  from: Date;
-  /** Exclusive upper bound on Appointment.start. */
-  to: Date;
-  /** If given, only appointments with one of these statuses. */
-  statuses?: AppointmentStatus[];
 }
 
 export interface CreateBroadcastInput {
@@ -168,31 +175,24 @@ export interface Repository {
   ): Promise<Availability[]>;
 
   getAppointment(id: string): Promise<Appointment | null>;
-  listAppointments(query: ListAppointmentsQuery): Promise<Appointment[]>;
-  /** Every appointment for one patient (any status), newest first — history view. */
+  /** Every queue entry for one patient (any status), newest first — history view. */
   listAppointmentsForPatient(patientId: string): Promise<Appointment[]>;
-  /** Every appointment in the system (any status) — for patient-directory stats. */
+  /** Every queue entry in the system (any status) — for analytics + directory. */
   listAllAppointments(): Promise<Appointment[]>;
-  /** A patient's BOOKED appointments starting at or after `from`, soonest first. */
-  listUpcomingAppointmentsForPatient(
-    patientId: string,
-    from: Date,
-  ): Promise<Appointment[]>;
-  /** BOOKED appointments starting in (from, to], soonest first — for reminders. */
-  listBookedBetween(from: Date, to: Date): Promise<Appointment[]>;
+  /** All queue entries for a doctor on a given queueDate (any status). */
+  listQueueEntries(doctorId: string, queueDate: Date): Promise<Appointment[]>;
+  /** The next token for a doctor's queue on a queueDate (max existing + 1). */
+  nextToken(doctorId: string, queueDate: Date): Promise<number>;
 
   /**
-   * Claim a notification of `kind` for an appointment. Returns true if this call
-   * recorded it (caller should send), false if it was already recorded. This is
-   * what makes reminders idempotent and the job safe to re-run.
+   * Claim a one-time notification of `kind` for a booking. Returns true if this
+   * call recorded it (caller should send), false if it was already claimed —
+   * making "you're next" and similar sends idempotent.
    */
-  recordNotificationOnce(appointmentId: string, kind: string): Promise<boolean>;
-  /** Remove notification records (used to re-arm reminders after a reschedule). */
-  deleteNotifications(appointmentId: string, kinds: string[]): Promise<void>;
-  /** Day-view read model: appointments joined with doctor + patient. */
+  claimNotification(appointmentId: string, kind: string): Promise<boolean>;
+
+  /** Day-board read model: queue entries joined with doctor + patient. */
   listAppointmentViews(query: AppointmentViewQuery): Promise<AppointmentView[]>;
-  /** A BOOKED appointment for this doctor at exactly `start`, if any. */
-  findBookedSlot(doctorId: string, start: Date): Promise<Appointment | null>;
 
   createAppointment(input: CreateAppointmentInput): Promise<Appointment>;
   updateAppointment(

@@ -13,21 +13,36 @@ export type AppointmentId = string;
 export type AvailabilityId = string;
 export type AppointmentEventId = string;
 
-/** Lifecycle status of an appointment. Stored as a String column at the DB edge. */
+/**
+ * Lifecycle status of a queue entry. Stored as a String column at the DB edge.
+ *   WAITING     — has a token, on the way / not yet checked in
+ *   ARRIVED     — checked in at the clinic, waiting to be seen
+ *   IN_PROGRESS — consult underway
+ *   DONE        — consult finished
+ *   NO_SHOW     — never turned up / called and absent
+ *   CANCELLED   — withdrawn before being seen
+ */
 export const AppointmentStatus = {
-  BOOKED: "BOOKED",
+  WAITING: "WAITING",
+  ARRIVED: "ARRIVED",
+  IN_PROGRESS: "IN_PROGRESS",
+  DONE: "DONE",
+  NO_SHOW: "NO_SHOW",
   CANCELLED: "CANCELLED",
-  COMPLETED: "COMPLETED",
 } as const;
 export type AppointmentStatus =
   (typeof AppointmentStatus)[keyof typeof AppointmentStatus];
 
-/** Append-only audit log event types. */
+/** Append-only audit log event types for a queue entry. */
 export const AppointmentEventType = {
-  BOOKED: "BOOKED",
-  RESCHEDULED: "RESCHEDULED",
+  JOINED: "JOINED",
+  ARRIVED: "ARRIVED",
+  STARTED: "STARTED",
+  DONE: "DONE",
+  NO_SHOW: "NO_SHOW",
   CANCELLED: "CANCELLED",
-  COMPLETED: "COMPLETED",
+  HOLD: "HOLD",
+  REINSTATED: "REINSTATED",
 } as const;
 export type AppointmentEventType =
   (typeof AppointmentEventType)[keyof typeof AppointmentEventType];
@@ -37,14 +52,17 @@ export interface Doctor {
   name: string;
   phone?: string | null;
   department: string;
-  /** Length of a single bookable slot, in minutes. */
+  /** Legacy slot length, in minutes. Unused by the queue model. */
   slotDurationMinutes: number;
+  /** Average consult length, in minutes — drives queue wait estimates. */
+  avgConsultMinutes: number;
 }
 
 /**
- * One weekly working window for a doctor. `dayOfWeek` is 0=Sun..6=Sat.
- * `startMinutes`/`endMinutes` are minutes-from-midnight (UTC), with
- * startMinutes < endMinutes and both in [0, 1440].
+ * One weekly SESSION window for a doctor: which weekday the queue is open and
+ * its open/close clock times. `dayOfWeek` is 0=Sun..6=Sat. `startMinutes`/
+ * `endMinutes` are minutes-from-midnight (UTC); `startMinutes` is the session
+ * start used for arrival estimates. No discrete slots are derived from this.
  */
 export interface Availability {
   id: AvailabilityId;
@@ -64,15 +82,33 @@ export interface Patient {
   consentAt: Date | null;
 }
 
+/**
+ * A live queue entry. One queue per doctor per `queueDate`; `token` is unique
+ * within that queue and assigned in join order starting at 1. There is no slot
+ * time — `arrivedAt`/`startedAt`/`doneAt` track the lifecycle. `start`/`end` are
+ * legacy (slot model) and always null on new entries.
+ */
 export interface Appointment {
   id: AppointmentId;
   doctorId: DoctorId;
   patientId: PatientId;
-  /** Slot start, UTC. */
-  start: Date;
-  /** Slot end (start + doctor.slotDurationMinutes), UTC. */
-  end: Date;
+  /** The clinic day this entry belongs to (UTC midnight). */
+  queueDate: Date;
+  /** Per doctor per queueDate, starting at 1. */
+  token: number;
+  isWalkIn: boolean;
+  isPriority: boolean;
+  /** Absent when called; the board skips a held token. */
+  onHold: boolean;
+  arrivedAt: Date | null;
+  startedAt: Date | null;
+  doneAt: Date | null;
   status: AppointmentStatus;
+  /** Last max-wait (minutes) the patient was told, for slip re-notification. */
+  lastNotifiedMaxMinutes: number | null;
+  /** Legacy slot times (slot model removed); null on queue entries. */
+  start: Date | null;
+  end: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }

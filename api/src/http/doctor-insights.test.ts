@@ -32,6 +32,7 @@ async function buildApp() {
     phone: null,
     department: "General",
     slotDurationMinutes: 30,
+    avgConsultMinutes: 10,
   });
   const patient = repo.addPatient({
     id: "pat1",
@@ -40,22 +41,25 @@ async function buildApp() {
     language: "en",
     consentAt: new Date("2026-06-01T00:00:00Z"),
   });
-  const mk = (startIso: string, status: AppointmentStatus) =>
+  let token = 0;
+  const mk = (dayIso: string, status: AppointmentStatus) =>
     repo.createAppointment({
       doctorId: doctor.id,
       patientId: patient.id,
-      start: new Date(startIso),
-      end: new Date(new Date(startIso).getTime() + 30 * 60_000),
+      queueDate: new Date(dayIso),
+      token: ++token,
+      isWalkIn: false,
+      isPriority: false,
       status,
     });
-  // Two visits + one cancellation on 23 Jun IST (09:00 & 09:30 IST = 03:30 & 04:00 UTC).
-  await mk("2026-06-23T03:30:00.000Z", AppointmentStatus.BOOKED);
-  await mk("2026-06-23T04:00:00.000Z", AppointmentStatus.COMPLETED);
-  await mk("2026-06-23T04:30:00.000Z", AppointmentStatus.CANCELLED);
-  // One visit on 10 Jun IST.
-  await mk("2026-06-10T05:00:00.000Z", AppointmentStatus.COMPLETED);
+  // Three tokens on 23 Jun (done, no-show, cancelled).
+  await mk("2026-06-23T00:00:00.000Z", AppointmentStatus.DONE);
+  await mk("2026-06-23T00:00:00.000Z", AppointmentStatus.NO_SHOW);
+  await mk("2026-06-23T00:00:00.000Z", AppointmentStatus.CANCELLED);
+  // One token on 10 Jun.
+  await mk("2026-06-10T00:00:00.000Z", AppointmentStatus.DONE);
   // One in a different month — must be excluded from the June query.
-  await mk("2026-07-01T05:00:00.000Z", AppointmentStatus.BOOKED);
+  await mk("2026-07-01T00:00:00.000Z", AppointmentStatus.DONE);
 
   return createApp({ repo, config, logger });
 }
@@ -80,17 +84,19 @@ describe("doctor insights endpoint", () => {
     expect(res.status).toBe(200);
     expect(res.body.doctor).toMatchObject({ name: "Dr. Test" });
     expect(res.body.summary).toMatchObject({
-      totalVisits: 3, // 2 on the 23rd + 1 on the 10th (July excluded)
+      totalJoined: 4, // 3 on the 23rd + 1 on the 10th (July excluded)
+      totalDone: 2,
+      totalNoShow: 1,
       totalCancelled: 1,
       busiestDate: "2026-06-23",
-      busiestCount: 2,
+      busiestCount: 3,
     });
     // 30 day buckets for June, zero-filled.
     expect(res.body.summary.perDay).toHaveLength(30);
     const d23 = res.body.summary.perDay.find(
       (d: { date: string }) => d.date === "2026-06-23",
     );
-    expect(d23).toMatchObject({ booked: 1, completed: 1, cancelled: 1, visits: 2 });
+    expect(d23).toMatchObject({ joined: 3, done: 1, noShow: 1, cancelled: 1 });
   });
 
   it("400s on a malformed month", async () => {

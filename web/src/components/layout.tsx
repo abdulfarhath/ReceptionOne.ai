@@ -36,8 +36,8 @@ export function Layout({ children }: { children: ReactNode }) {
         <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
           <span className="font-semibold">receptionone.ai</span>
           <nav className="flex items-center gap-1" aria-label="Primary">
-            <NavItem to="/" label="Appointments" />
-            <NavItem to="/appointments/new" label="New" />
+            <NavItem to="/" label="Live Queue" />
+            <NavItem to="/appointments/new" label="New booking" />
             <NavItem to="/patients" label="Patients" />
             <NavItem to="/broadcasts" label="Broadcasts" />
             <NavItem to="/analytics" label="Analytics" />

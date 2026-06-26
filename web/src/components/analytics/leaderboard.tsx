@@ -3,41 +3,39 @@ import { Medal } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import type { DoctorUtilization } from "@/lib/schemas";
+import type { DoctorActivity } from "@/lib/schemas";
 
-type SortKey = "booked" | "utilization" | "noShowsHigh" | "noShowsLow";
+type SortKey = "seen" | "noShowsHigh" | "noShowsLow" | "fastest";
 
 const SORTS: { key: SortKey; label: string }[] = [
-  { key: "booked", label: "Most booked" },
-  { key: "utilization", label: "Utilization" },
+  { key: "seen", label: "Most seen" },
   { key: "noShowsHigh", label: "Most no-shows" },
   { key: "noShowsLow", label: "Fewest no-shows" },
+  { key: "fastest", label: "Fastest consult" },
 ];
 
 const MEDALS = ["#eab308", "#94a3b8", "#b45309"]; // gold, silver, bronze
 
-function sortDoctors(
-  doctors: DoctorUtilization[],
-  key: SortKey,
-): DoctorUtilization[] {
+function sortDoctors(doctors: DoctorActivity[], key: SortKey): DoctorActivity[] {
   const copy = [...doctors];
+  const consult = (d: DoctorActivity) => d.avgConsultMinutes ?? Infinity;
   copy.sort((a, b) => {
     switch (key) {
-      case "booked":
-        return b.totalBooked - a.totalBooked;
-      case "utilization":
-        return b.utilizationPct - a.utilizationPct;
+      case "seen":
+        return b.totalDone - a.totalDone;
       case "noShowsHigh":
-        return b.estNoShows - a.estNoShows;
+        return b.noShows - a.noShows;
       case "noShowsLow":
-        return a.estNoShows - b.estNoShows;
+        return a.noShows - b.noShows;
+      case "fastest":
+        return consult(a) - consult(b);
     }
   });
   return copy;
 }
 
-export function Leaderboard({ doctors }: { doctors: DoctorUtilization[] }) {
-  const [sort, setSort] = useState<SortKey>("booked");
+export function Leaderboard({ doctors }: { doctors: DoctorActivity[] }) {
+  const [sort, setSort] = useState<SortKey>("seen");
   const ranked = sortDoctors(doctors, sort);
 
   return (
@@ -60,9 +58,9 @@ export function Leaderboard({ doctors }: { doctors: DoctorUtilization[] }) {
             <tr>
               <th className="w-12 px-3 py-2 text-center font-medium">#</th>
               <th className="px-3 py-2 font-medium">Doctor</th>
-              <th className="px-3 py-2 text-right font-medium">Booked</th>
-              <th className="px-3 py-2 text-right font-medium">Util %</th>
-              <th className="px-3 py-2 text-right font-medium">Est. no-shows</th>
+              <th className="px-3 py-2 text-right font-medium">Seen</th>
+              <th className="px-3 py-2 text-right font-medium">Avg consult</th>
+              <th className="px-3 py-2 text-right font-medium">No-shows</th>
             </tr>
           </thead>
           <tbody>
@@ -88,18 +86,18 @@ export function Leaderboard({ doctors }: { doctors: DoctorUtilization[] }) {
                   </div>
                 </td>
                 <td className="px-3 py-2 text-right tabular-nums">
-                  {d.totalBooked}
+                  {d.totalDone}
                 </td>
-                <td className="px-3 py-2 text-right tabular-nums">
-                  {d.utilizationPct}%
+                <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
+                  {d.avgConsultMinutes === null ? "—" : `${d.avgConsultMinutes}m`}
                 </td>
                 <td
                   className={cn(
                     "px-3 py-2 text-right tabular-nums",
-                    d.estNoShows > 0 ? "text-rose-600" : "text-muted-foreground",
+                    d.noShows > 0 ? "text-rose-600" : "text-muted-foreground",
                   )}
                 >
-                  {d.estNoShows}
+                  {d.noShows}
                 </td>
               </tr>
             ))}
@@ -117,8 +115,7 @@ export function Leaderboard({ doctors }: { doctors: DoctorUtilization[] }) {
         </table>
       </div>
       <p className="text-[11px] text-muted-foreground">
-        Est. no-shows = past appointments left booked (never completed or
-        cancelled) — a derived estimate, not a tracked status.
+        Seen = consults completed (DONE). Avg consult = mean start→done minutes.
       </p>
     </div>
   );

@@ -22,7 +22,7 @@ const schema = z.object({
   name: z.string().min(1, "Name is required"),
   phone: z.string().optional().nullable(),
   department: z.string().min(1, "Department is required"),
-  slotDurationMinutes: z.coerce
+  avgConsultMinutes: z.coerce
     .number()
     .int("Whole minutes only")
     .positive("Must be greater than zero")
@@ -50,7 +50,7 @@ export function DoctorFormDialog({
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { name: "", phone: "", department: "", slotDurationMinutes: 30 },
+    defaultValues: { name: "", phone: "", department: "", avgConsultMinutes: 15 },
   });
 
   useEffect(() => {
@@ -61,9 +61,9 @@ export function DoctorFormDialog({
               name: doctor.name,
               phone: doctor.phone ?? "",
               department: doctor.department,
-              slotDurationMinutes: doctor.slotDurationMinutes,
+              avgConsultMinutes: doctor.avgConsultMinutes,
             }
-          : { name: "", phone: "", department: "", slotDurationMinutes: 30 },
+          : { name: "", phone: "", department: "", avgConsultMinutes: 15 },
       );
     }
   }, [open, doctor, reset]);
@@ -73,12 +73,12 @@ export function DoctorFormDialog({
       const payload = {
         name: String(values.name),
         phone: values.phone ? (() => {
-          let c = String(values.phone).replace(/[\s\(\)-]/g, "");
+          const c = String(values.phone).replace(/[\s()-]/g, "");
           if (c.length === 10 && /^\d+$/.test(c)) return `+91${c}`;
           return c;
         })() : null,
         department: String(values.department),
-        slotDurationMinutes: Number(values.slotDurationMinutes),
+        avgConsultMinutes: Number(values.avgConsultMinutes),
       };
       return editing ? updateDoctor(doctor.id, payload) : createDoctor(payload);
     },
@@ -142,17 +142,17 @@ export function DoctorFormDialog({
             ) : null}
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="doctor-slot">Slot length (minutes)</Label>
+            <Label htmlFor="doctor-slot">Avg consult (minutes)</Label>
             <Input
               id="doctor-slot"
               type="number"
               min={1}
-              aria-invalid={Boolean(errors.slotDurationMinutes)}
-              {...register("slotDurationMinutes")}
+              aria-invalid={Boolean(errors.avgConsultMinutes)}
+              {...register("avgConsultMinutes")}
             />
-            {errors.slotDurationMinutes ? (
+            {errors.avgConsultMinutes ? (
               <p className="text-sm text-destructive">
-                {errors.slotDurationMinutes.message}
+                {errors.avgConsultMinutes.message}
               </p>
             ) : null}
           </div>

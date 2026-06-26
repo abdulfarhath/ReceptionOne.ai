@@ -4,13 +4,11 @@ import { Link, useParams } from "react-router-dom";
 import { ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react";
 
 import { ErrorState, Spinner } from "@/components/states";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { getAvailability, getDoctorInsights, getSlots } from "@/lib/api";
+import { getAvailability, getDoctorInsights } from "@/lib/api";
 import type { DoctorDayDemand } from "@/lib/schemas";
-import { dayName, formatTime, minutesToIstLabel, todayIsoDate } from "@/lib/time";
+import { dayName, minutesToIstLabel, todayIsoDate } from "@/lib/time";
 
 /** Shift a "YYYY-MM" string by `delta` months. */
 function shiftMonth(month: string, delta: number): string {
@@ -50,19 +48,19 @@ function Stat({
   );
 }
 
-/** A dependency-free bar chart of visits per day (completed + booked stacked). */
+/** A dependency-free bar chart of tokens joined per day (done segment shaded). */
 function DemandChart({ perDay }: { perDay: DoctorDayDemand[] }) {
-  const max = Math.max(1, ...perDay.map((d) => d.visits));
+  const max = Math.max(1, ...perDay.map((d) => d.joined));
   const pct = (n: number) => `${(n / max) * 100}%`;
 
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-4 text-xs text-muted-foreground">
         <span className="flex items-center gap-1.5">
-          <span className="size-2.5 rounded-sm bg-emerald-600" /> Completed
+          <span className="size-2.5 rounded-sm bg-emerald-600" /> Done
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="size-2.5 rounded-sm bg-primary" /> Booked
+          <span className="size-2.5 rounded-sm bg-primary" /> Other (no-show / cancelled / active)
         </span>
       </div>
       <div className="overflow-x-auto">
@@ -71,14 +69,17 @@ function DemandChart({ perDay }: { perDay: DoctorDayDemand[] }) {
             <div key={d.date} className="flex flex-1 flex-col items-center gap-1">
               <div
                 className="flex w-full flex-1 flex-col justify-end overflow-hidden rounded-t"
-                title={`${d.date}: ${d.visits} visit${d.visits === 1 ? "" : "s"}${
-                  d.cancelled ? `, ${d.cancelled} cancelled` : ""
-                }`}
+                title={`${d.date}: ${d.joined} joined, ${d.done} done${
+                  d.noShow ? `, ${d.noShow} no-show` : ""
+                }${d.cancelled ? `, ${d.cancelled} cancelled` : ""}`}
               >
-                <div className="w-full bg-primary" style={{ height: pct(d.booked) }} />
+                <div
+                  className="w-full bg-primary"
+                  style={{ height: pct(d.joined - d.done) }}
+                />
                 <div
                   className="w-full bg-emerald-600"
-                  style={{ height: pct(d.completed) }}
+                  style={{ height: pct(d.done) }}
                 />
               </div>
               <span className="text-[10px] tabular-nums text-muted-foreground">
@@ -95,16 +96,10 @@ function DemandChart({ perDay }: { perDay: DoctorDayDemand[] }) {
 export function DoctorInsightsPage() {
   const { id = "" } = useParams();
   const [month, setMonth] = useState(() => todayIsoDate().slice(0, 7));
-  const [date, setDate] = useState(() => todayIsoDate());
 
   const insightsQuery = useQuery({
     queryKey: ["doctor-insights", id, month],
     queryFn: () => getDoctorInsights(id, month),
-    enabled: id !== "",
-  });
-  const slotsQuery = useQuery({
-    queryKey: ["doctor-slots", id, date],
-    queryFn: () => getSlots(id, date),
     enabled: id !== "",
   });
   const availabilityQuery = useQuery({
@@ -140,64 +135,30 @@ export function DoctorInsightsPage() {
                   {doctor.name}
                 </h1>
                 <p className="text-muted-foreground">
-                  {doctor.department} · demand &amp; availability
+                  {doctor.department} · demand &amp; session hours
                 </p>
               </div>
 
-              {/* Free times */}
+              {/* Session hours (when the queue is open) */}
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-base">When they're free</CardTitle>
+                  <CardTitle className="text-base">Session hours</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex flex-wrap items-center gap-3">
-                    <label
-                      htmlFor="free-date"
-                      className="text-sm text-muted-foreground"
-                    >
-                      Free slots on
-                    </label>
-                    <Input
-                      id="free-date"
-                      type="date"
-                      className="w-auto"
-                      value={date}
-                      onChange={(e) => setDate(e.target.value)}
-                    />
-                  </div>
-                  {slotsQuery.isLoading ? (
-                    <Spinner label="Loading slots…" />
-                  ) : (slotsQuery.data ?? []).length === 0 ? (
+                <CardContent>
+                  {(availabilityQuery.data ?? []).length === 0 ? (
                     <p className="text-sm text-muted-foreground">
-                      No free slots on this day.
+                      No session hours set.
                     </p>
                   ) : (
-                    <div className="flex flex-wrap gap-2">
-                      {(slotsQuery.data ?? []).map((s) => (
-                        <Badge key={s} variant="secondary">
-                          {formatTime(s)}
-                        </Badge>
+                    <ul className="space-y-1 text-sm text-muted-foreground">
+                      {(availabilityQuery.data ?? []).map((w) => (
+                        <li key={w.id}>
+                          {dayName(w.dayOfWeek)}: {minutesToIstLabel(w.startMinutes)}
+                          –{minutesToIstLabel(w.endMinutes)}
+                        </li>
                       ))}
-                    </div>
+                    </ul>
                   )}
-
-                  <div className="border-t pt-3">
-                    <p className="mb-2 text-sm font-medium">Weekly hours</p>
-                    {(availabilityQuery.data ?? []).length === 0 ? (
-                      <p className="text-sm text-muted-foreground">
-                        No weekly hours set.
-                      </p>
-                    ) : (
-                      <ul className="space-y-1 text-sm text-muted-foreground">
-                        {(availabilityQuery.data ?? []).map((w) => (
-                          <li key={w.id}>
-                            {dayName(w.dayOfWeek)}: {minutesToIstLabel(w.startMinutes)}
-                            –{minutesToIstLabel(w.endMinutes)}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
                 </CardContent>
               </Card>
 
@@ -228,16 +189,12 @@ export function DoctorInsightsPage() {
               </div>
 
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                <Stat label="Visits this month" value={summary.totalVisits} />
-                <Stat label="Completed" value={summary.totalCompleted} />
-                <Stat label="Cancelled" value={summary.totalCancelled} />
+                <Stat label="Tokens this month" value={summary.totalJoined} />
+                <Stat label="Seen (done)" value={summary.totalDone} />
+                <Stat label="No-shows" value={summary.totalNoShow} />
                 <Stat
                   label="Busiest day"
-                  value={
-                    summary.busiestDate
-                      ? `${summary.busiestCount}`
-                      : "—"
-                  }
+                  value={summary.busiestDate ? `${summary.busiestCount}` : "—"}
                   hint={
                     summary.busiestDate
                       ? `on the ${Number(summary.busiestDate.slice(-2))}`
@@ -249,7 +206,7 @@ export function DoctorInsightsPage() {
               <Card>
                 <CardHeader>
                   <CardTitle className="text-base">
-                    Bookings per day · avg {summary.averagePerDay}/day
+                    Tokens per day · avg {summary.averagePerDay}/day
                   </CardTitle>
                 </CardHeader>
                 <CardContent>

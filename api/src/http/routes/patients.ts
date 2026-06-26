@@ -56,7 +56,6 @@ export function patientsRouter(deps: AppDeps): Router {
         else byPatient.set(appt.patientId, [appt]);
       }
 
-      const now = new Date();
       const term = q?.toLowerCase();
       const directory = patients
         .filter(
@@ -70,7 +69,7 @@ export function patientsRouter(deps: AppDeps): Router {
           name: p.name,
           phone: p.phone,
           consentAt: p.consentAt,
-          ...summarizePatientHistory(byPatient.get(p.id) ?? [], now),
+          ...summarizePatientHistory(byPatient.get(p.id) ?? []),
         }));
 
       res.json({ patients: directory });
@@ -90,14 +89,14 @@ export function patientsRouter(deps: AppDeps): Router {
         deps.repo.listDoctors(),
       ]);
       const doctorById = new Map(doctors.map((d) => [d.id, d]));
-      const summary = summarizePatientHistory(appointments, new Date());
+      const summary = summarizePatientHistory(appointments);
       const history = appointments.map((a) => ({
         id: a.id,
         doctorId: a.doctorId,
         doctorName: doctorById.get(a.doctorId)?.name ?? "Unknown",
         department: doctorById.get(a.doctorId)?.department ?? "",
-        start: a.start,
-        end: a.end,
+        queueDate: a.queueDate,
+        token: a.token,
         status: a.status,
         createdAt: a.createdAt,
       }));

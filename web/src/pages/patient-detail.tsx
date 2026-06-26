@@ -6,17 +6,9 @@ import { ErrorState, Spinner } from "@/components/states";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getPatientDetail } from "@/lib/api";
-import type { AppointmentStatus, PatientAppointment } from "@/lib/schemas";
-import { formatLongDate, formatTime } from "@/lib/time";
-
-const STATUS_VARIANT: Record<
-  AppointmentStatus,
-  "default" | "success" | "muted"
-> = {
-  BOOKED: "default",
-  COMPLETED: "success",
-  CANCELLED: "muted",
-};
+import type { PatientAppointment } from "@/lib/schemas";
+import { STATUS_LABEL, statusVariant } from "@/lib/queue";
+import { formatLongDate } from "@/lib/time";
 
 function Stat({ label, value }: { label: string; value: number | string }) {
   return (
@@ -34,14 +26,16 @@ function HistoryRow({ appt }: { appt: PatientAppointment }) {
     <li className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
       <div>
         <div className="font-medium">
-          {formatLongDate(appt.start)} · {formatTime(appt.start)}
+          {formatLongDate(appt.queueDate)} · token #{appt.token}
         </div>
         <div className="text-sm text-muted-foreground">
           {appt.doctorName}
           {appt.department ? ` — ${appt.department}` : ""}
         </div>
       </div>
-      <Badge variant={STATUS_VARIANT[appt.status]}>{appt.status}</Badge>
+      <Badge variant={statusVariant(appt.status)}>
+        {STATUS_LABEL[appt.status]}
+      </Badge>
     </li>
   );
 }
@@ -83,15 +77,16 @@ export function PatientDetailPage() {
                 <p className="text-muted-foreground">{patient.phone}</p>
               </div>
 
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                <Stat label="Total bookings" value={summary.total} />
-                <Stat label="Upcoming" value={summary.upcoming} />
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
+                <Stat label="Total visits" value={summary.total} />
+                <Stat label="Active" value={summary.active} />
                 <Stat label="Completed" value={summary.completed} />
+                <Stat label="No-shows" value={summary.noShow} />
                 <Stat label="Cancelled" value={summary.cancelled} />
               </div>
 
               <Card>
-                <CardContent className="grid gap-3 pt-6 text-sm sm:grid-cols-3">
+                <CardContent className="grid gap-3 pt-6 text-sm sm:grid-cols-2">
                   <div>
                     <div className="text-muted-foreground">First visit</div>
                     <div className="font-medium">
@@ -105,14 +100,6 @@ export function PatientDetailPage() {
                     <div className="font-medium">
                       {summary.lastVisitAt
                         ? formatLongDate(summary.lastVisitAt)
-                        : "—"}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground">Next appointment</div>
-                    <div className="font-medium">
-                      {summary.nextAppointmentAt
-                        ? `${formatLongDate(summary.nextAppointmentAt)} · ${formatTime(summary.nextAppointmentAt)}`
                         : "—"}
                     </div>
                   </div>
