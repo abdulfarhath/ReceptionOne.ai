@@ -9,6 +9,7 @@ import { ah } from "../async-handler.js";
 import type { AppDeps } from "../deps.js";
 import type { UpdateDoctorInput } from "../../repository/repository.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
+import { schedulingTuning } from "./bookings.js";
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const dateQuerySchema = z.object({
@@ -89,7 +90,7 @@ const replaceAvailabilitySchema = z.object({
 /** Doctor + availability management. Reads need auth; writes need ADMIN. */
 export function doctorsRouter(deps: AppDeps): Router {
   const router = Router();
-  const scheduling = new SchedulingService(deps.repo);
+  const scheduling = new SchedulingService(deps.repo, undefined, schedulingTuning());
   router.use(requireAuth(deps));
 
   // Estimate BEFORE booking (people ahead, wait, suggested arrival).
@@ -99,6 +100,18 @@ export function doctorsRouter(deps: AppDeps): Router {
       const id = z.string().min(1).parse(req.params.id);
       const { date } = dateQuerySchema.parse(req.query);
       res.json(await scheduling.quote(id, queueDateFrom(date)));
+    }),
+  );
+
+  // Window estimate for a "come at my own time" (scheduled) token.
+  router.get(
+    "/:id/scheduled-quote",
+    ah(async (req, res) => {
+      const id = z.string().min(1).parse(req.params.id);
+      const { targetTime } = z
+        .object({ targetTime: z.string().datetime("Use an ISO datetime") })
+        .parse(req.query);
+      res.json(await scheduling.scheduledQuote(id, new Date(targetTime)));
     }),
   );
 

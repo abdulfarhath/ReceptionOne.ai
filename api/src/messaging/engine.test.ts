@@ -62,7 +62,8 @@ describe("ConversationEngine (queue)", () => {
     expect(await say("2")).toContain("Book appointment"); // No -> menu
     expect(await say("1")).toMatch(/name/i); // Book -> ask name (new patient)
     expect(await say("Riya Sharma")).toContain("Dr. Test"); // choose doctor
-    expect(await say("1")).toMatch(/min wait|book\?/i); // quote + confirm (range)
+    expect(await say("1")).toMatch(/when|come now/i); // pick doctor -> ask timing
+    expect(await say("1")).toMatch(/min wait|book\?/i); // come now -> quote + confirm
     const joined = await say("1"); // joined
     expect(joined).toMatch(/booked with|min wait/i);
     expect(joined).not.toMatch(/token|#\d/i); // never a token/rank to the patient
@@ -129,5 +130,26 @@ describe("ConversationEngine (queue)", () => {
     await say("1"); // English
     await say("2"); // No to emergency
     expect(await say("9")).toMatch(/select an option/i);
+  });
+
+  it("books a scheduled token (come at my own time): a window, never a minute or token", async () => {
+    await say("hi");
+    await say("1"); // English
+    await say("2"); // No -> menu
+    await say("1"); // Book
+    await say("Riya Sharma"); // name
+    expect(await say("1")).toMatch(/when|come now/i); // pick doctor -> ask timing
+    expect(await say("2")).toMatch(/pick a time|time to come/i); // Pick a time -> options
+    const confirm = await say("1"); // choose first offered time
+    expect(confirm).toMatch(/come around|arrive by|book\?/i);
+    const joined = await say("1"); // confirm
+    expect(joined).toMatch(/around|arrive by/i);
+    expect(joined).not.toMatch(/token|#\d/i); // never a token to the patient
+
+    const entries = await env.repo.listQueueEntries("doc1", toQueueDate(FIXED_NOW));
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.status).toBe(AppointmentStatus.WAITING);
+    expect(entries[0]?.isWalkIn).toBe(false);
+    expect(entries[0]?.targetTime).not.toBeNull();
   });
 });

@@ -10,6 +10,8 @@ export const ConversationStep = {
   CHOOSE_ACTION: "CHOOSE_ACTION",
   ASK_NAME: "ASK_NAME",
   CHOOSE_DOCTOR: "CHOOSE_DOCTOR",
+  CHOOSE_TIMING: "CHOOSE_TIMING", // come now vs pick a time
+  CHOOSE_TIME: "CHOOSE_TIME", // pick a concrete scheduled time
   CHOOSE_SLOT: "CHOOSE_SLOT",
   CHOOSE_APPOINTMENT: "CHOOSE_APPOINTMENT",
   CONFIRM: "CONFIRM",
@@ -39,6 +41,9 @@ export interface ConversationContext {
   offeredDoctorIds?: string[];
   offeredSlotsIso?: string[];
   offeredAppointmentIds?: string[];
+  /** Scheduled ("come at my own time") booking: offered targets + the chosen one. */
+  offeredTimesIso?: string[];
+  targetTimeIso?: string;
 }
 
 export interface ConversationRecord {

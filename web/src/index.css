@@ -3,47 +3,96 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* receptionone.ai brand — teal + amber identity, modelled on the live token
+   queue. Light + dark are driven by these CSS variables; components use the
+   semantic/brand tokens below so a single class flips with the theme. */
 :root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  --radius: 0.75rem;
+  /* Render native controls (select dropdowns, date pickers, scrollbars) in
+     light; .dark flips this so they're legible in dark mode. */
+  color-scheme: light;
+
+  /* shadcn semantic tokens */
+  --background: #f1f5f3; /* paper */
+  --foreground: #0b2722; /* ink */
+  --card: #ffffff;
+  --card-foreground: #0b2722;
+  --popover: #ffffff;
+  --popover-foreground: #0b2722;
+  --primary: #0e7c6b; /* teal */
+  --primary-foreground: #ffffff;
+  --secondary: #e2efeb;
+  --secondary-foreground: #0a4339;
+  --muted: #eaf0ee;
+  --muted-foreground: #5c746f;
+  --accent: #e2efeb;
+  --accent-foreground: #0a4339;
+  --destructive: #e11d48;
+  --border: #dde6e2; /* line */
+  --input: #dde6e2;
+  --ring: #0e7c6b;
+
+  /* brand neutrals + helpers (theme-aware) */
+  --panel: #f6f9f8; /* sidebar surface */
+  --nav-active: #e2efeb;
+  --faint: #9aaaa5; /* faint labels */
+  --ink-soft: #3c544f; /* secondary text */
+  --line-soft: #edf2f0; /* subtle dividers */
+  --subtle: #f4f8f6; /* subtle fills (table rows, chips) */
+
+  /* brand accents (theme-aware) */
+  --teal: #0e7c6b;
+  --teal-deep: #0a4339;
+  --amber-soft: #fbefd9;
+  --amber-text: #9a6516;
+  --mint: #d6ece4;
+  --mint-strong: #bbddd2;
+  --success: #1f6e4e;
+  --success-soft: #e4f1eb;
+  --noshow: #b42318;
+  --noshow-soft: #fce6e6;
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
+  /* Neutral cool-charcoal base with a vibrant teal accent — a modern dashboard
+     dark theme (à la Linear / GitHub / Vercel). Tweak these to re-skin dark. */
+  color-scheme: dark;
+  --background: #0d1117;
+  --foreground: #e6edf3;
+  --card: #161b22;
+  --card-foreground: #e6edf3;
+  --popover: #161b22;
+  --popover-foreground: #e6edf3;
+  --primary: #2dd4bf;
+  --primary-foreground: #06241f;
+  --secondary: #1c232c;
+  --secondary-foreground: #cdeae3;
+  --muted: #1a212a;
+  --muted-foreground: #8b97a3;
+  --accent: #1c232c;
+  --accent-foreground: #e6edf3;
+  --destructive: #fb7185;
+  --border: #262d36;
+  --input: #2c343e;
+  --ring: #2dd4bf;
+
+  --panel: #11161d;
+  --nav-active: rgba(45, 212, 191, 0.14);
+  --faint: #6b7682;
+  --ink-soft: #aeb9c4;
+  --line-soft: rgba(255, 255, 255, 0.06);
+  --subtle: rgba(255, 255, 255, 0.03);
+
+  --teal: #2dd4bf;
+  --teal-deep: #4fddc9;
+  --amber-soft: rgba(240, 177, 90, 0.15);
+  --amber-text: #f0b860;
+  --mint: rgba(45, 212, 191, 0.16);
+  --mint-strong: rgba(45, 212, 191, 0.3);
+  --success: #4ade80;
+  --success-soft: rgba(74, 222, 128, 0.14);
+  --noshow: #fb7185;
+  --noshow-soft: rgba(251, 113, 133, 0.14);
 }
 
 @theme inline {
@@ -51,6 +100,7 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -69,6 +119,38 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+
+  /* brand palette — flips with the theme via the vars above */
+  --color-teal: var(--teal);
+  --color-teal-deep: var(--teal-deep);
+  --color-teal-darker: #062b24;
+  --color-amber: #eda23b;
+  --color-amber-ink: #3a2606;
+  --color-amber-soft: var(--amber-soft);
+  --color-amber-text: var(--amber-text);
+  --color-mint: var(--mint);
+  --color-mint-strong: var(--mint-strong);
+  --color-ink: var(--foreground);
+  --color-paper: var(--background);
+  --color-line: var(--border);
+  --color-line-soft: var(--line-soft);
+  --color-subtle: var(--subtle);
+  --color-panel: var(--panel);
+  --color-nav-active: var(--nav-active);
+  --color-faint: var(--faint);
+  --color-ink-soft: var(--ink-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-noshow: var(--noshow);
+  --color-noshow-soft: var(--noshow-soft);
+
+  /* type families */
+  --font-sans: "Hanken Grotesk", system-ui, sans-serif;
+  --font-display: "Bricolage Grotesque", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  /* soft brand shadow */
+  --shadow-soft: 0 1px 3px rgba(11, 39, 34, 0.06), 0 20px 40px -30px rgba(11, 39, 34, 0.3);
 }
 
 @layer base {
@@ -77,5 +159,57 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  /* tokens, times and numeric labels stay in JetBrains Mono with tabular figures */
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@keyframes r1pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
+/* Marketing landing — hero chat bubbles rise in on load. */
+@keyframes r1rise {
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.r1-thread .r1-bubble {
+  opacity: 0;
+  transform: translateY(8px);
+  animation: r1rise 0.5s cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+.r1-thread .r1-bubble:nth-child(1) {
+  animation-delay: 0.15s;
+}
+.r1-thread .r1-bubble:nth-child(2) {
+  animation-delay: 0.55s;
+}
+.r1-thread .r1-bubble:nth-child(3) {
+  animation-delay: 0.95s;
+}
+.r1-thread .r1-bubble:nth-child(4) {
+  animation-delay: 1.45s;
+}
+.r1-thread .r1-bubble:nth-child(5) {
+  animation-delay: 1.95s;
+}
+@media (prefers-reduced-motion: reduce) {
+  .r1-thread .r1-bubble {
+    opacity: 1;
+    transform: none;
+    animation: none;
   }
 }

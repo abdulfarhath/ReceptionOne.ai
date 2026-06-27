@@ -97,6 +97,8 @@ export interface CreateAppointmentInput {
   isPriority: boolean;
   status: AppointmentStatus;
   arrivedAt?: Date | null;
+  /** "Come at my own time" target (UTC); null/omitted = immediate token. */
+  targetTime?: Date | null;
 }
 
 export interface UpdateAppointmentInput {

@@ -4,19 +4,29 @@ import { DomainError } from "./errors.js";
 import {
   activeOrder,
   assertTransition,
+  effectiveTime,
   estimateRange,
   estimateWaitMinutes,
+  isUpcoming,
   positionOf,
   suggestedArrival,
+  upcomingScheduled,
 } from "./queue.js";
 import { AppointmentStatus, type Appointment } from "./types.js";
 
 const DATE = new Date("2026-06-24T00:00:00.000Z");
+/** A UTC instant `min` minutes after the queue-day midnight. */
+const T = (min: number): Date => new Date(DATE.getTime() + min * 60_000);
 
 function entry(
   token: number,
   status: AppointmentStatus,
-  opts: { priority?: boolean } = {},
+  opts: {
+    priority?: boolean;
+    targetTime?: Date | null;
+    arrivedAt?: Date | null;
+    createdAt?: Date;
+  } = {},
 ): Appointment {
   return {
     id: `a${token}`,
@@ -27,14 +37,15 @@ function entry(
     isWalkIn: false,
     isPriority: opts.priority ?? false,
     onHold: false,
-    arrivedAt: null,
+    targetTime: opts.targetTime ?? null,
+    arrivedAt: opts.arrivedAt ?? null,
     startedAt: null,
     doneAt: null,
     status,
     lastNotifiedMaxMinutes: null,
     start: null,
     end: null,
-    createdAt: DATE,
+    createdAt: opts.createdAt ?? DATE,
     updatedAt: DATE,
   };
 }
@@ -61,16 +72,65 @@ describe("activeOrder", () => {
     expect(order.map((e) => e.token)).toEqual([1, 2, 3]);
   });
 
-  it("is present-first: ARRIVED beats WAITING, even priority WAITING", () => {
+  it("orders by effective time: earlier-arrived before later-arrived", () => {
     const order = activeOrder([
-      entry(1, AppointmentStatus.WAITING, { priority: true }), // travelling VIP
-      entry(2, AppointmentStatus.ARRIVED), // physically here
-      entry(3, AppointmentStatus.ARRIVED, { priority: true }), // here + VIP
-      entry(4, AppointmentStatus.WAITING),
-      entry(5, AppointmentStatus.IN_PROGRESS),
+      entry(1, AppointmentStatus.ARRIVED, { arrivedAt: T(50) }),
+      entry(2, AppointmentStatus.ARRIVED, { arrivedAt: T(10) }),
     ]);
-    // IN_PROGRESS, then ARRIVED (priority 3 before 2), then WAITING (priority 1 before 4).
-    expect(order.map((e) => e.token)).toEqual([5, 3, 2, 1, 4]);
+    expect(order.map((e) => e.token)).toEqual([2, 1]);
+  });
+});
+
+describe("effectiveTime + scheduled ordering", () => {
+  it("effectiveTime is targetTime (scheduled), else arrivedAt, else createdAt", () => {
+    expect(
+      effectiveTime(entry(1, AppointmentStatus.WAITING, { targetTime: T(30) })),
+    ).toBe(T(30).getTime());
+    expect(
+      effectiveTime(entry(2, AppointmentStatus.ARRIVED, { arrivedAt: T(10) })),
+    ).toBe(T(10).getTime());
+    expect(
+      effectiveTime(entry(3, AppointmentStatus.WAITING, { createdAt: T(5) })),
+    ).toBe(T(5).getTime());
+  });
+
+  it("a scheduled token sits at its target: ahead of later walk-ups, behind earlier waiters", () => {
+    const order = activeOrder(
+      [
+        entry(1, AppointmentStatus.ARRIVED, { arrivedAt: T(10) }), // earlier waiter
+        entry(2, AppointmentStatus.WAITING, { targetTime: T(30) }), // scheduled
+        entry(3, AppointmentStatus.ARRIVED, { arrivedAt: T(50) }), // later walk-up
+      ],
+      { now: T(40), scheduledLeadMin: 15 },
+    );
+    expect(order.map((e) => e.token)).toEqual([1, 2, 3]);
+  });
+
+  it("an early-arriving scheduled token keeps its target time (no jumping ahead)", () => {
+    const order = activeOrder(
+      [
+        entry(1, AppointmentStatus.ARRIVED, { arrivedAt: T(10) }), // earlier waiter
+        // scheduled for T(30) but already checked in at T(5):
+        entry(2, AppointmentStatus.ARRIVED, { targetTime: T(30), arrivedAt: T(5) }),
+      ],
+      { now: T(40), scheduledLeadMin: 15 },
+    );
+    expect(order.map((e) => e.token)).toEqual([1, 2]);
+  });
+
+  it("excludes a scheduled token before its lead window, includes it after", () => {
+    const entries = [entry(1, AppointmentStatus.WAITING, { targetTime: T(60) })];
+    // target - lead = 45; before that it is upcoming, not in the active line.
+    expect(
+      activeOrder(entries, { now: T(40), scheduledLeadMin: 15 }).map((e) => e.token),
+    ).toEqual([]);
+    expect(isUpcoming(entries[0]!, T(40), 15)).toBe(true);
+    expect(upcomingScheduled(entries, T(40), 15).map((e) => e.token)).toEqual([1]);
+    // at/after the lead window it activates.
+    expect(
+      activeOrder(entries, { now: T(45), scheduledLeadMin: 15 }).map((e) => e.token),
+    ).toEqual([1]);
+    expect(isUpcoming(entries[0]!, T(45), 15)).toBe(false);
   });
 });
 

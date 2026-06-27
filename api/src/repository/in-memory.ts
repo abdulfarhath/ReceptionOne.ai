@@ -301,6 +301,7 @@ export class InMemoryRepository implements Repository, StaffRepository {
       isWalkIn: input.isWalkIn,
       isPriority: input.isPriority,
       onHold: false,
+      targetTime: input.targetTime ?? null,
       arrivedAt: input.arrivedAt ?? null,
       startedAt: null,
       doneAt: null,

@@ -27,6 +27,6 @@ export function RequireAuth() {
 /** Gate for ADMIN-only routes. Sits inside RequireAuth. */
 export function RequireAdmin() {
   const { isAdmin } = useAuth();
-  if (!isAdmin) return <Navigate to="/" replace />;
+  if (!isAdmin) return <Navigate to="/app" replace />;
   return <Outlet />;
 }

@@ -15,6 +15,19 @@ function queueDateFrom(date?: string): Date {
   return toQueueDate(date ? new Date(`${date}T00:00:00.000Z`) : new Date());
 }
 
+/** Scheduled-token tunables shared across routes (env, with defaults). */
+export function schedulingTuning(): {
+  scheduledLeadMin?: number;
+  arrivalBufferMin?: number;
+} {
+  const lead = Number(process.env.SCHEDULED_LEAD_MIN);
+  const buffer = Number(process.env.ARRIVAL_BUFFER_MIN);
+  return {
+    ...(Number.isFinite(lead) ? { scheduledLeadMin: lead } : {}),
+    ...(Number.isFinite(buffer) ? { arrivalBufferMin: buffer } : {}),
+  };
+}
+
 const joinSchema = z.object({
   doctorId: z.string().min(1),
   date: z.string().regex(DATE, "Use YYYY-MM-DD").optional(),
@@ -23,6 +36,8 @@ const joinSchema = z.object({
   isPriority: z.boolean().optional(),
   isWalkIn: z.boolean().optional(),
   priorityReason: z.string().trim().min(1).optional(),
+  /** "Come at my own time": optional preferred target (ISO datetime, UTC). */
+  targetTime: z.string().datetime().optional(),
 });
 
 const reinstateSchema = z.object({
@@ -36,6 +51,7 @@ export function bookingsRouter(deps: AppDeps): Router {
   const maxPriority = Number(process.env.MAX_PRIORITY_PER_DAY);
   const service = new SchedulingService(deps.repo, undefined, {
     ...(Number.isFinite(maxPriority) ? { maxPriorityPerDay: maxPriority } : {}),
+    ...schedulingTuning(),
   });
   router.use(requireAuth(deps));
 
@@ -49,14 +65,17 @@ export function bookingsRouter(deps: AppDeps): Router {
     "/",
     ah(async (req, res) => {
       const input = joinSchema.parse(req.body);
+      const target = input.targetTime ? new Date(input.targetTime) : null;
       const result = await service.joinQueue({
         doctorId: input.doctorId,
-        date: queueDateFrom(input.date),
+        // A scheduled token's queue day follows its target; else the given date/today.
+        date: target ?? queueDateFrom(input.date),
         patientName: input.patientName,
         patientPhone: input.patientPhone,
         ...(input.isPriority !== undefined ? { isPriority: input.isPriority } : {}),
         ...(input.isWalkIn !== undefined ? { isWalkIn: input.isWalkIn } : {}),
         ...(input.priorityReason ? { priorityReason: input.priorityReason } : {}),
+        ...(target ? { targetTime: target } : {}),
       });
       const entry = await deps.repo.getAppointment(result.bookingId);
       if (entry) nudge(entry);

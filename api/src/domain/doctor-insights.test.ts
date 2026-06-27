@@ -15,6 +15,7 @@ function entry(status: AppointmentStatus, queueDateIso: string): Appointment {
     isWalkIn: false,
     isPriority: false,
     onHold: false,
+    targetTime: null,
     arrivedAt: null,
     startedAt: null,
     doneAt: null,

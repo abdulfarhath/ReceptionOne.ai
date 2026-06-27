@@ -85,6 +85,11 @@ model Appointment {
   isPriority Boolean  @default(false)
   onHold     Boolean  @default(false) // absent when called; board skips it
 
+  // "Come at my own time": preferred target (UTC). Null = immediate token (come
+  // now). Still a token, not a reserved slot — enters the live queue around this
+  // time and gets an honest window.
+  targetTime DateTime?
+
   arrivedAt DateTime? // checked in
   startedAt DateTime? // consult began
   doneAt    DateTime? // consult ended

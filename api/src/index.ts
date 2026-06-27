@@ -6,6 +6,7 @@ import { createApp } from "./http/app.js";
 import type { AppConfig, MessagingDeps } from "./http/deps.js";
 import { startBroadcastDispatchJob } from "./jobs/broadcasts.js";
 import { startNoShowSweepJob } from "./jobs/no-show.js";
+import { startScheduledDueJob } from "./jobs/scheduled-due.js";
 import { createChannelFromEnv } from "./messaging/channel-factory.js";
 import { BroadcastService } from "./messaging/broadcasts.js";
 import { ConversationEngine } from "./messaging/engine.js";
@@ -38,7 +39,19 @@ const config: AppConfig = {
 
 const prisma = new PrismaClient();
 const repo = new PrismaRepository(prisma);
-const scheduling = new SchedulingService(repo);
+
+// "Come at my own time" tunables (env, with sensible defaults).
+const scheduledLeadMin = Number.isFinite(Number(process.env.SCHEDULED_LEAD_MIN))
+  ? Number(process.env.SCHEDULED_LEAD_MIN)
+  : 15;
+const arrivalBufferMin = Number.isFinite(Number(process.env.ARRIVAL_BUFFER_MIN))
+  ? Number(process.env.ARRIVAL_BUFFER_MIN)
+  : 10;
+
+const scheduling = new SchedulingService(repo, undefined, {
+  scheduledLeadMin,
+  arrivalBufferMin,
+});
 
 // Select the WhatsApp channel by env; fall back to the Mock when Twilio is unset.
 const { channel, usingTwilio, twilioAuthToken } = createChannelFromEnv((line) =>
@@ -54,6 +67,7 @@ const broadcasts = new BroadcastService({
 const queueNotifier = new QueueNotifier({
   repo,
   channel,
+  scheduledLeadMin,
   ...(Number.isFinite(Number(process.env.SLIP_MIN))
     ? { slipMin: Number(process.env.SLIP_MIN) }
     : {}),
@@ -95,9 +109,15 @@ startBroadcastDispatchJob(broadcasts, {
   onError: (err) => logger.error({ err }, "broadcast dispatch pass failed"),
 });
 
-// Flip stale WAITING tokens to NO_SHOW after each session ends + a grace period.
+// Flip stale WAITING tokens to NO_SHOW after each session ends + a grace period
+// (and scheduled tokens past their own target + grace).
 startNoShowSweepJob(scheduling, {
   graceMin: Number(process.env.NO_SHOW_GRACE_MIN ?? 30),
   onSwept: (count) => logger.info(`no-shows swept: ${count}`),
   onError: (err) => logger.error({ err }, "no-show sweep failed"),
+});
+
+// Activate scheduled tokens around their target and nudge them to head over.
+startScheduledDueJob(repo, queueNotifier, {
+  onError: (err) => logger.error({ err }, "scheduled-due pass failed"),
 });

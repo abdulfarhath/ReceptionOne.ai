@@ -100,6 +100,12 @@ export interface Appointment {
   isPriority: boolean;
   /** Absent when called; the board skips a held token. */
   onHold: boolean;
+  /**
+   * Preferred "come at my own time" target (UTC). Null = an immediate token
+   * (come now). A scheduled token is still a token, never a reserved slot: it
+   * enters the live queue around this time and is given an honest window.
+   */
+  targetTime: Date | null;
   arrivedAt: Date | null;
   startedAt: Date | null;
   doneAt: Date | null;

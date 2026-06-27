@@ -57,7 +57,15 @@ type TranslationKey =
   | "queue_none"
   | "queue_arrived"
   | "queue_youre_next"
-  | "queue_slip";
+  | "queue_slip"
+  | "ask_timing"
+  | "btn_come_now"
+  | "btn_pick_time"
+  | "choose_time"
+  | "confirm_scheduled_prompt"
+  | "scheduled_busy_note"
+  | "queue_scheduled"
+  | "queue_scheduled_due";
 
 const dict: Record<Language, Record<TranslationKey, string>> = {
   en: {
@@ -118,6 +126,14 @@ const dict: Record<Language, Record<TranslationKey, string>> = {
     queue_arrived: "Checked in ✓ for {doctor} — about {min}–{max} min now.",
     queue_youre_next: "You're next for {doctor}! Please be ready.",
     queue_slip: "{doctor} is running a little behind — now about {min}–{max} min.",
+    ask_timing: "When would you like to come?",
+    btn_come_now: "Come now",
+    btn_pick_time: "Pick a time",
+    choose_time: "Pick a time to come in:",
+    confirm_scheduled_prompt: "{doctor}: come around {around}, please arrive by {comeBy}. It's a window, not an exact minute. Book? Tap Yes/No.",
+    scheduled_busy_note: "Heads up — that time is busy, so you'll likely be seen by ~{likely}.",
+    queue_scheduled: "Booked with {doctor} for around {around}. Please arrive by {comeBy} — you'll join the live queue near your time. Send 'status' anytime.",
+    queue_scheduled_due: "Your turn with {doctor} is coming up — please head to the clinic now.",
   },
   te: {
     language_prompt: "Please choose your language / దయచేసి మీ భాషను ఎంచుకోండి / कृपया अपनी भाषा चुनें",
@@ -177,6 +193,14 @@ const dict: Record<Language, Record<TranslationKey, string>> = {
     queue_arrived: "{doctor} కోసం చెక్-ఇన్ ✓ — ఇప్పుడు సుమారు {min}–{max} నిమి.",
     queue_youre_next: "{doctor} కోసం మీరు తదుపరి! సిద్ధంగా ఉండండి.",
     queue_slip: "{doctor} కొంచెం ఆలస్యంగా ఉన్నారు — ఇప్పుడు సుమారు {min}–{max} నిమి.",
+    ask_timing: "మీరు ఎప్పుడు రావాలనుకుంటున్నారు?",
+    btn_come_now: "ఇప్పుడే వస్తాను",
+    btn_pick_time: "సమయం ఎంచుకోండి",
+    choose_time: "రావడానికి ఒక సమయం ఎంచుకోండి:",
+    confirm_scheduled_prompt: "{doctor}: సుమారు {around} కి రండి, {comeBy} కల్లా చేరుకోండి. ఇది ఒక విండో, కచ్చితమైన నిమిషం కాదు. బుక్ చేయాలా? Yes/No నొక్కండి.",
+    scheduled_busy_note: "గమనిక — ఆ సమయం రద్దీగా ఉంది, మిమ్మల్ని సుమారు ~{likely} కల్లా చూసే అవకాశం ఉంది.",
+    queue_scheduled: "{doctor} గారితో సుమారు {around} కి బుక్ అయింది. {comeBy} కల్లా రండి — మీ సమయం దగ్గర లైవ్ క్యూలో చేరతారు. 'status' అని పంపండి.",
+    queue_scheduled_due: "{doctor} గారితో మీ వంతు దగ్గరలో ఉంది — దయచేసి ఇప్పుడే క్లినిక్‌కు రండి.",
   },
   hi: {
     language_prompt: "Please choose your language / దయచేసి మీ భాషను ఎంచుకోండి / कृपया अपनी भाषा चुनें",
@@ -236,6 +260,14 @@ const dict: Record<Language, Record<TranslationKey, string>> = {
     queue_arrived: "{doctor} के लिए चेक-इन ✓ — अब लगभग {min}–{max} मिनट।",
     queue_youre_next: "{doctor} के लिए आपकी बारी अगली है! तैयार रहें।",
     queue_slip: "{doctor} थोड़ा देरी से चल रहे हैं — अब लगभग {min}–{max} मिनट।",
+    ask_timing: "आप कब आना चाहेंगे?",
+    btn_come_now: "अभी आऊँगा",
+    btn_pick_time: "समय चुनें",
+    choose_time: "आने के लिए एक समय चुनें:",
+    confirm_scheduled_prompt: "{doctor}: लगभग {around} पर आएँ, {comeBy} तक पहुँचें। यह एक विंडो है, सटीक मिनट नहीं। बुक करें? Yes/No दबाएं।",
+    scheduled_busy_note: "ध्यान दें — वह समय व्यस्त है, आपको लगभग ~{likely} तक देखा जाएगा।",
+    queue_scheduled: "{doctor} के साथ लगभग {around} के लिए बुक हुआ। {comeBy} तक पहुँचें — आप अपने समय के पास लाइव क्यू में शामिल होंगे। 'status' भेजें।",
+    queue_scheduled_due: "{doctor} के साथ आपकी बारी पास है — कृपया अभी क्लिनिक आएँ।",
   }
 };
 

@@ -312,4 +312,95 @@ describe("sweepNoShows", () => {
     expect((await svc.sweepNoShows(600)).swept).toBe(0);
     expect((await repo.getAppointment(a.bookingId))?.status).toBe(AppointmentStatus.WAITING);
   });
+
+  it("flips a scheduled token NO_SHOW once its own target + grace has passed", async () => {
+    const { repo, svc } = sweepSetup(); // session ends 05:00 UTC; NOW = 06:00 UTC
+    // Scheduled for 05:00; an immediate traveller is also WAITING. With a 90-min
+    // grace the SESSION rule can't fire (05:00 + 90 = 06:30 > NOW), so only the
+    // scheduled-target rule (05:00 + 90? no — use a small grace) applies.
+    const scheduled = await svc.joinQueue({
+      doctorId: "doc1",
+      date: NOW,
+      patientName: "S",
+      patientPhone: "+910000000009",
+      targetTime: new Date("2026-06-24T05:00:00.000Z"),
+    });
+    // grace 30: scheduled cutoff 05:30 <= NOW(06:00) -> swept; session cutoff
+    // 05:00 + 30 = 05:30 <= NOW too, but the scheduled token is what we assert.
+    const res = await svc.sweepNoShows(30);
+    expect((await repo.getAppointment(scheduled.bookingId))?.status).toBe(
+      AppointmentStatus.NO_SHOW,
+    );
+    expect(res.swept).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe("scheduled tokens (come at my own time)", () => {
+  const ARRIVAL_BUFFER_MIN = 10;
+
+  it("scheduledQuote returns a window + come-by, never a guaranteed minute", async () => {
+    const target = new Date("2026-06-24T08:00:00.000Z");
+    const q = await env.svc.scheduledQuote("doc1", target);
+    expect(q.aroundTime.toISOString()).toBe(target.toISOString());
+    expect(q.comeBy.getTime()).toBe(target.getTime() - ARRIVAL_BUFFER_MIN * 60_000);
+    expect(q.windowMaxMinutes).toBeGreaterThan(0);
+    expect(q.alreadyScheduledInWindow).toBe(0);
+    expect(q.likelySeenBy).toBeUndefined();
+  });
+
+  it("counts other scheduled tokens in the same hour", async () => {
+    const target = new Date("2026-06-24T08:00:00.000Z");
+    await env.svc.joinQueue({ doctorId: "doc1", date: target, patientName: "S1", patientPhone: "+910000000051", targetTime: target });
+    await env.svc.joinQueue({ doctorId: "doc1", date: target, patientName: "S2", patientPhone: "+910000000052", targetTime: new Date("2026-06-24T08:30:00.000Z") });
+    const q = await env.svc.scheduledQuote("doc1", new Date("2026-06-24T08:15:00.000Z"));
+    expect(q.alreadyScheduledInWindow).toBe(2);
+  });
+
+  it("adds a soft likelySeenBy when the chosen hour is oversubscribed (never blocks)", async () => {
+    const target = new Date("2026-06-24T08:00:00.000Z");
+    // avg 10 min -> the hour holds ~6; a 7th makes it oversubscribed.
+    for (let i = 0; i < 6; i++) {
+      await env.svc.joinQueue({ doctorId: "doc1", date: target, patientName: `S${i}`, patientPhone: `+91000000${700 + i}`, targetTime: target });
+    }
+    const q = await env.svc.scheduledQuote("doc1", target);
+    expect(q.alreadyScheduledInWindow).toBe(6);
+    expect(q.likelySeenBy).toBeInstanceOf(Date); // soft hint only
+  });
+
+  it("joinQueue with targetTime starts a scheduled WAITING token and replies a window (not a minute/position)", async () => {
+    const target = new Date("2026-06-24T08:00:00.000Z");
+    const r = await env.svc.joinQueue({
+      doctorId: "doc1",
+      date: target,
+      patientName: "S",
+      patientPhone: "+910000000060",
+      targetTime: target,
+    });
+    expect(r.scheduled).toBe(true);
+    expect(r.aroundTime?.toISOString()).toBe(target.toISOString());
+    expect(r.comeBy).toBeInstanceOf(Date);
+    expect(r).not.toHaveProperty("token");
+    expect(r).not.toHaveProperty("position");
+
+    const entry = await env.repo.getAppointment(r.bookingId);
+    expect(entry?.status).toBe(AppointmentStatus.WAITING);
+    expect(entry?.isWalkIn).toBe(false);
+    expect(entry?.targetTime?.toISOString()).toBe(target.toISOString());
+  });
+
+  it("getQueue puts a not-yet-active scheduled token in 'upcoming', not traveling", async () => {
+    // NOW = 06:00 UTC, lead 15 -> a 09:00 target activates at 08:45 (still upcoming).
+    const target = new Date("2026-06-24T09:00:00.000Z");
+    const r = await env.svc.joinQueue({
+      doctorId: "doc1",
+      date: target,
+      patientName: "S",
+      patientPhone: "+910000000061",
+      targetTime: target,
+    });
+    const board = await env.svc.getQueue("doc1", NOW);
+    expect(board.upcoming.map((v) => v.id)).toContain(r.bookingId);
+    expect(board.traveling.map((v) => v.id)).not.toContain(r.bookingId);
+    expect(board.upcoming[0]?.targetTime?.toISOString()).toBe(target.toISOString());
+  });
 });

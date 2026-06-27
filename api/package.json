@@ -17,6 +17,7 @@
     "db:generate": "prisma generate",
     "db:seed": "tsx prisma/seed.ts",
     "db:seed:admin": "tsx prisma/seed-admin.ts",
+    "db:seed:demo": "tsx prisma/seed-demo.ts",
     "chat": "tsx src/messaging/cli.ts"
   },
   "dependencies": {

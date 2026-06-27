@@ -28,9 +28,11 @@ function Section({
   className?: string;
 }) {
   return (
-    <Card className={className}>
+    <Card className={`shadow-soft ${className ?? ""}`}>
       <CardHeader className="pb-3">
-        <CardTitle className="text-base">{title}</CardTitle>
+        <CardTitle className="font-display text-base font-extrabold text-ink">
+          {title}
+        </CardTitle>
         {description ? (
           <p className="text-sm text-muted-foreground">{description}</p>
         ) : null}
@@ -51,10 +53,11 @@ export function AnalyticsPage() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Analytics</h1>
-          <p className="text-muted-foreground">
-            Doctor activity, demand trends, and patient insights — live from
-            the appointments dataset.
+          <h1 className="font-display text-[26px] font-extrabold tracking-tight text-ink">
+            Analytics
+          </h1>
+          <p className="mt-1 text-[13.5px] text-muted-foreground">
+            Operational view across all doctors.
             {query.data ? ` As of ${formatLongDate(query.data.generatedAt)}.` : ""}
           </p>
         </div>
@@ -83,7 +86,9 @@ export function AnalyticsPage() {
         <div className="space-y-5">
           {/* 1. Doctor activity */}
           <section className="space-y-3">
-            <h2 className="text-lg font-semibold">Doctor activity (today)</h2>
+            <h2 className="font-display text-lg font-extrabold text-ink">
+              Doctor activity (today)
+            </h2>
             <UtilizationCards doctors={query.data.doctors} />
           </section>
 

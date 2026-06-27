@@ -89,6 +89,8 @@ export const queueEntryViewSchema = z.object({
   patientPhone: z.string(),
   position: z.number(),
   estimateWaitMinutes: z.number(),
+  /** Scheduled-token target (ISO, UTC); null for immediate tokens. */
+  targetTime: z.string().nullable(),
   arrivedAt: z.string().nullable(),
   startedAt: z.string().nullable(),
   doneAt: z.string().nullable(),
@@ -96,6 +98,8 @@ export const queueEntryViewSchema = z.object({
 export type QueueEntryView = z.infer<typeof queueEntryViewSchema>;
 
 export const queueBoardSchema = z.object({
+  /** Scheduled ("come at my own time") tokens not yet activated. */
+  upcoming: z.array(queueEntryViewSchema),
   traveling: z.array(queueEntryViewSchema),
   waitingHere: z.array(queueEntryViewSchema),
   inProgress: z.array(queueEntryViewSchema),
@@ -113,13 +117,28 @@ export const quoteResultSchema = z.object({
 });
 export type QuoteResult = z.infer<typeof quoteResultSchema>;
 
-/** Patient-facing join result: an honest range, never token/position. */
+/** A scheduled-token window estimate: a band around the target, never a minute. */
+export const scheduledQuoteResultSchema = z.object({
+  aroundTime: z.string(),
+  windowMinMinutes: z.number(),
+  windowMaxMinutes: z.number(),
+  comeBy: z.string(),
+  alreadyScheduledInWindow: z.number(),
+  likelySeenBy: z.string().optional(),
+});
+export type ScheduledQuoteResult = z.infer<typeof scheduledQuoteResultSchema>;
+
+/** Patient-facing join result: an honest range/window, never token/position. */
 export const joinResultSchema = z.object({
   bookingId: z.string(),
   estimateMinMinutes: z.number(),
   estimateMaxMinutes: z.number(),
   suggestedArrival: z.string(),
   priorityWarning: z.string().optional(),
+  /** Scheduled ("come at my own time") token: a window + come-by time. */
+  scheduled: z.boolean().optional(),
+  aroundTime: z.string().optional(),
+  comeBy: z.string().optional(),
 });
 export type JoinResult = z.infer<typeof joinResultSchema>;
 
@@ -134,6 +153,7 @@ export const queueEntrySchema = z.object({
   isPriority: z.boolean(),
   onHold: z.boolean(),
   status: appointmentStatusSchema,
+  targetTime: z.string().nullable().optional(),
   arrivedAt: z.string().nullable(),
   startedAt: z.string().nullable(),
   doneAt: z.string().nullable(),

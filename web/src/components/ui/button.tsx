@@ -19,6 +19,9 @@ const buttonVariants = cva(
           "bg-secondary text-secondary-foreground shadow-xs hover:bg-secondary/80",
         ghost: "hover:bg-accent hover:text-accent-foreground",
         link: "text-primary underline-offset-4 hover:underline",
+        // Amber brand accent — primary call-to-action (New booking / broadcast).
+        accent:
+          "bg-amber text-amber-ink font-semibold shadow-[0_6px_16px_-8px_rgba(237,162,59,0.7)] hover:bg-amber/90",
       },
       size: {
         default: "h-9 px-4 py-2 has-[>svg]:px-3",

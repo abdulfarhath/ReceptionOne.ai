@@ -129,6 +129,34 @@ describe("queue over HTTP", () => {
     expect((await agent.post(`/api/bookings/${a.bookingId}/no-show`)).body.status).toBe("NO_SHOW");
   });
 
+  it("books a scheduled token via targetTime: a window reply, no token, lands in 'upcoming'", async () => {
+    const target = new Date(Date.now() + 2 * 60 * 60 * 1000); // +2h (upcoming)
+    const day = target.toISOString().slice(0, 10);
+    const res = await agent
+      .post("/api/bookings")
+      .send({ ...joinBody("+919000000050"), targetTime: target.toISOString() });
+    expect(res.status).toBe(201);
+    expect(res.body.scheduled).toBe(true);
+    expect(typeof res.body.comeBy).toBe("string");
+    expect(res.body).not.toHaveProperty("token");
+    expect(res.body).not.toHaveProperty("position");
+
+    const sq = await agent
+      .get("/api/doctors/doc1/scheduled-quote")
+      .query({ targetTime: target.toISOString() });
+    expect(sq.status).toBe(200);
+    expect(typeof sq.body.comeBy).toBe("string");
+    expect(sq.body.alreadyScheduledInWindow).toBeGreaterThanOrEqual(1);
+
+    const board = await agent.get("/api/doctors/doc1/queue").query({ date: day });
+    expect(board.body.upcoming.map((v: { id: string }) => v.id)).toContain(
+      res.body.bookingId,
+    );
+    expect(board.body.traveling.map((v: { id: string }) => v.id)).not.toContain(
+      res.body.bookingId,
+    );
+  });
+
   it("reinstates a no-show (reason required); 'back' gives a fresh token", async () => {
     const a = (await agent.post("/api/bookings").send(joinBody("+919000000001"))).body;
     await agent.post("/api/bookings").send(joinBody("+919000000002")); // token 2

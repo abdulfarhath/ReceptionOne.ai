@@ -35,14 +35,14 @@ export function DoctorsPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
+          <h1 className="font-display text-[26px] font-extrabold tracking-tight text-ink">
             Doctors &amp; availability
           </h1>
-          <p className="text-muted-foreground">
+          <p className="mt-1 text-[13.5px] text-muted-foreground">
             Manage doctors and their weekly hours.
           </p>
         </div>
-        <Button onClick={openCreate}>
+        <Button variant="accent" onClick={openCreate}>
           <Plus className="size-4" aria-hidden />
           Add doctor
         </Button>
@@ -68,10 +68,13 @@ export function DoctorsPage() {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">
           {(doctorsQuery.data ?? []).map((doctor) => (
-            <Card key={doctor.id}>
+            <Card key={doctor.id} className="shadow-soft">
               <CardHeader>
-                <CardTitle className="flex items-baseline justify-between">
-                  <span>{doctor.name}</span>
+                <CardTitle className="flex items-baseline justify-between gap-3">
+                  <span className="flex items-center gap-2 font-display text-base font-extrabold text-ink">
+                    <span className="size-2 rounded-full bg-teal" />
+                    {doctor.name}
+                  </span>
                   <span className="text-sm font-normal text-muted-foreground">
                     {doctor.department}
                   </span>
@@ -79,8 +82,18 @@ export function DoctorsPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <p className="text-sm text-muted-foreground">
-                  {doctor.avgConsultMinutes}-min avg consult
-                  {doctor.phone ? ` • ${doctor.phone}` : ""}
+                  <span className="font-mono font-bold text-teal-deep">
+                    {doctor.avgConsultMinutes}
+                  </span>
+                  -min avg consult
+                  {doctor.phone ? (
+                    <>
+                      {" · "}
+                      <span className="font-mono">{doctor.phone}</span>
+                    </>
+                  ) : (
+                    ""
+                  )}
                 </p>
                 <div className="flex gap-2">
                   <Button
@@ -98,7 +111,7 @@ export function DoctorsPage() {
                     Edit hours
                   </Button>
                   <Button variant="outline" size="sm" asChild>
-                    <Link to={`/doctors/${doctor.id}/insights`}>
+                    <Link to={`/app/doctors/${doctor.id}/insights`}>
                       <BarChart3 className="size-4" aria-hidden />
                       Insights
                     </Link>

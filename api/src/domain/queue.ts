@@ -7,6 +7,9 @@ import { AppointmentStatus, type Appointment } from "./types.js";
 
 const MINUTE_MS = 60_000;
 
+/** A scheduled token activates this many minutes before its target by default. */
+export const DEFAULT_SCHEDULED_LEAD_MIN = 15;
+
 /** Statuses that are no longer in the active queue. */
 const INACTIVE: ReadonlySet<AppointmentStatus> = new Set([
   AppointmentStatus.DONE,
@@ -14,34 +17,82 @@ const INACTIVE: ReadonlySet<AppointmentStatus> = new Set([
   AppointmentStatus.CANCELLED,
 ]);
 
-/**
- * Present-first tier rank: someone being seen, then people physically here, then
- * people still travelling. The doctor is always served the next ARRIVED — a
- * WAITING (still on the way) is never served before someone present.
- */
-const TIER: Record<AppointmentStatus, number> = {
-  [AppointmentStatus.IN_PROGRESS]: 0,
-  [AppointmentStatus.ARRIVED]: 1,
-  [AppointmentStatus.WAITING]: 2,
-  [AppointmentStatus.DONE]: 3,
-  [AppointmentStatus.NO_SHOW]: 3,
-  [AppointmentStatus.CANCELLED]: 3,
-};
+/** A "come at my own time" token carries a preferred targetTime. */
+export function isScheduled(entry: Appointment): boolean {
+  return entry.targetTime != null;
+}
 
 /**
- * The ordered active queue for a doctor+date. Excludes DONE/NO_SHOW/CANCELLED.
- * Ordered by **tier (present-first)**, then priority, then ascending token —
- * IN_PROGRESS(0) < ARRIVED(1) < WAITING(2); within a tier, priority first then
- * token. This one list drives position, wait estimates, and the board.
+ * The single ordering key (epoch ms): IN_PROGRESS is pinned to the front by
+ * `activeOrder` separately; otherwise a scheduled token sits at its targetTime,
+ * and an immediate token at when it became real — arrivedAt if checked in, else
+ * its join time (createdAt). A scheduled patient who arrives early keeps
+ * targetTime, so they never jump ahead of earlier waiters.
  */
-export function activeOrder(entries: Appointment[]): Appointment[] {
+export function effectiveTime(entry: Appointment): number {
+  if (entry.targetTime != null) return entry.targetTime.getTime();
+  return (entry.arrivedAt ?? entry.createdAt).getTime();
+}
+
+/**
+ * A scheduled token is "upcoming" — not yet in the active line — while it is
+ * still WAITING and now is earlier than `targetTime - leadMin`. After that it
+ * activates automatically (joins activeOrder); checking in / no-show is unchanged.
+ */
+export function isUpcoming(
+  entry: Appointment,
+  now: Date,
+  leadMin: number = DEFAULT_SCHEDULED_LEAD_MIN,
+): boolean {
+  if (entry.targetTime == null) return false;
+  if (entry.status !== AppointmentStatus.WAITING) return false;
+  return now.getTime() < entry.targetTime.getTime() - leadMin * MINUTE_MS;
+}
+
+export interface OrderOptions {
+  /** Current time — required to exclude not-yet-active scheduled tokens. */
+  now?: Date;
+  /** Minutes before targetTime a scheduled token joins the line. */
+  scheduledLeadMin?: number;
+}
+
+/**
+ * The ordered active queue for a doctor+date. Excludes DONE/NO_SHOW/CANCELLED
+ * and any scheduled token that is still upcoming (before its lead window — pass
+ * `now` to enable that exclusion). Ordering is a single effective-time key:
+ * IN_PROGRESS pinned to the front, then priority, then ascending effectiveTime,
+ * then token. This one list drives position, wait estimates, and the board.
+ */
+export function activeOrder(
+  entries: Appointment[],
+  opts: OrderOptions = {},
+): Appointment[] {
+  const { now } = opts;
+  const leadMin = opts.scheduledLeadMin ?? DEFAULT_SCHEDULED_LEAD_MIN;
   return entries
     .filter((e) => !INACTIVE.has(e.status))
+    .filter((e) => !(now && isUpcoming(e, now, leadMin)))
     .sort((a, b) => {
-      if (TIER[a.status] !== TIER[b.status]) return TIER[a.status] - TIER[b.status];
+      const ap = a.status === AppointmentStatus.IN_PROGRESS ? 0 : 1;
+      const bp = b.status === AppointmentStatus.IN_PROGRESS ? 0 : 1;
+      if (ap !== bp) return ap - bp; // IN_PROGRESS pinned to the front
       if (a.isPriority !== b.isPriority) return a.isPriority ? -1 : 1;
+      const at = effectiveTime(a);
+      const bt = effectiveTime(b);
+      if (at !== bt) return at - bt;
       return a.token - b.token;
     });
+}
+
+/** Scheduled tokens that have NOT yet activated (still upcoming), target order. */
+export function upcomingScheduled(
+  entries: Appointment[],
+  now: Date,
+  leadMin: number = DEFAULT_SCHEDULED_LEAD_MIN,
+): Appointment[] {
+  return entries
+    .filter((e) => isUpcoming(e, now, leadMin))
+    .sort((a, b) => effectiveTime(a) - effectiveTime(b) || a.token - b.token);
 }
 
 /** 1-based position of `entry` in `order` (people before = position - 1). 0 if absent. */

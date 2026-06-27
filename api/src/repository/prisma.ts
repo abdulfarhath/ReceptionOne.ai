@@ -97,6 +97,7 @@ type AppointmentRow = {
   isWalkIn: boolean;
   isPriority: boolean;
   onHold: boolean;
+  targetTime: Date | null;
   arrivedAt: Date | null;
   startedAt: Date | null;
   doneAt: Date | null;
@@ -156,6 +157,7 @@ function toAppointment(row: AppointmentRow): Appointment {
     isWalkIn: row.isWalkIn,
     isPriority: row.isPriority,
     onHold: row.onHold,
+    targetTime: row.targetTime,
     arrivedAt: row.arrivedAt,
     startedAt: row.startedAt,
     doneAt: row.doneAt,
@@ -477,6 +479,7 @@ export class PrismaRepository implements Repository, StaffRepository {
         isPriority: input.isPriority,
         status: input.status,
         arrivedAt: input.arrivedAt ?? null,
+        targetTime: input.targetTime ?? null,
       },
     });
     return toAppointment(row);

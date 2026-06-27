@@ -124,6 +124,10 @@ export class ConversationEngine {
         return this.onAskName(record, inbound);
       case ConversationStep.CHOOSE_DOCTOR:
         return this.onChooseDoctor(record, inbound);
+      case ConversationStep.CHOOSE_TIMING:
+        return this.onChooseTiming(record, inbound);
+      case ConversationStep.CHOOSE_TIME:
+        return this.onChooseTime(record, inbound);
       case ConversationStep.CHOOSE_APPOINTMENT:
         return this.onChooseAppointment(record, inbound);
       case ConversationStep.CONFIRM:
@@ -307,12 +311,91 @@ export class ConversationEngine {
       return this.repromptList(record);
     }
     record.context.doctorId = ids[choice - 1]!;
+    // Ask "come now" vs "pick a time" before quoting.
+    record.step = ConversationStep.CHOOSE_TIMING;
+    await this.store.save(record);
+    await this.channel.sendButtons(
+      record.phone,
+      t("ask_timing", lang),
+      this.toButtons([t("btn_come_now", lang), t("btn_pick_time", lang)]),
+    );
+  }
+
+  /** "Come now" -> immediate quote+confirm; "Pick a time" -> offer scheduled times. */
+  private async onChooseTiming(
+    record: ConversationRecord,
+    inbound: InboundMessage,
+  ): Promise<void> {
+    const lang = record.context.language ?? "en";
+    const choice = inbound.choiceIndex;
+    if (choice === 1) {
+      return this.promptImmediateConfirm(record);
+    }
+    if (choice !== 2) return this.repromptList(record);
+
+    const times = await this.scheduledTimeOptions(record.context.doctorId!);
+    if (times.length === 0) {
+      // No times left in today's session — fall back to coming now.
+      return this.promptImmediateConfirm(record);
+    }
+    record.context.offeredTimesIso = times.map((d) => d.toISOString());
+    record.step = ConversationStep.CHOOSE_TIME;
+    await this.store.save(record);
+    await this.sendInteractive(
+      record.phone,
+      t("choose_time", lang),
+      times.map((d) => istTime.format(d)),
+      "Time",
+    );
+  }
+
+  /** Pick a concrete scheduled time -> window quote -> confirm. */
+  private async onChooseTime(
+    record: ConversationRecord,
+    inbound: InboundMessage,
+  ): Promise<void> {
+    const lang = record.context.language ?? "en";
+    const iso = record.context.offeredTimesIso ?? [];
+    const choice = inbound.choiceIndex;
+    if (!choice || choice < 1 || choice > iso.length) {
+      return this.repromptList(record);
+    }
+    const targetIso = iso[choice - 1]!;
+    record.context.targetTimeIso = targetIso;
     record.step = ConversationStep.CONFIRM;
     await this.store.save(record);
-    const doctor = await this.repo.getDoctor(record.context.doctorId);
-    // Show the estimate BEFORE booking.
+
+    const doctor = await this.repo.getDoctor(record.context.doctorId!);
+    const sq = await this.scheduling.scheduledQuote(
+      record.context.doctorId!,
+      new Date(targetIso),
+    );
+    if (sq.likelySeenBy) {
+      await this.channel.sendText(
+        record.phone,
+        t("scheduled_busy_note", lang, { likely: istTime.format(sq.likelySeenBy) }),
+      );
+    }
+    await this.channel.sendButtons(
+      record.phone,
+      t("confirm_scheduled_prompt", lang, {
+        doctor: doctor?.name ?? "Doctor",
+        around: istTime.format(sq.aroundTime),
+        comeBy: istTime.format(sq.comeBy),
+      }),
+      this.toButtons([t("btn_yes_confirm", lang), t("btn_no_back", lang)]),
+    );
+  }
+
+  /** Quote the live queue now and ask to confirm an immediate token. */
+  private async promptImmediateConfirm(record: ConversationRecord): Promise<void> {
+    const lang = record.context.language ?? "en";
+    delete record.context.targetTimeIso;
+    record.step = ConversationStep.CONFIRM;
+    await this.store.save(record);
+    const doctor = await this.repo.getDoctor(record.context.doctorId!);
     const quote = await this.scheduling.quote(
-      record.context.doctorId,
+      record.context.doctorId!,
       this.clock.now(),
     );
     await this.channel.sendButtons(
@@ -325,6 +408,35 @@ export class ConversationEngine {
       }),
       this.toButtons([t("btn_yes_confirm", lang), t("btn_no_back", lang)]),
     );
+  }
+
+  /**
+   * Concrete scheduled-time options inside today's session window: from the next
+   * 30-min mark (at least ~30 min out) to session close, at hourly spacing, max 5.
+   */
+  private async scheduledTimeOptions(doctorId: string): Promise<Date[]> {
+    const MIN = 60_000;
+    const now = this.clock.now();
+    const queueDate = toQueueDate(now);
+    const windows = (await this.repo.listAvailability(doctorId)).filter(
+      (w) => w.dayOfWeek === queueDate.getUTCDay(),
+    );
+    const startMs = windows.length
+      ? queueDate.getTime() + Math.min(...windows.map((w) => w.startMinutes)) * MIN
+      : now.getTime();
+    const endMs = windows.length
+      ? queueDate.getTime() + Math.max(...windows.map((w) => w.endMinutes)) * MIN
+      : now.getTime() + 6 * 60 * MIN;
+
+    // Earliest pickable: a bit out from now, rounded up to the next half hour.
+    const floor = Math.max(startMs, now.getTime() + 30 * MIN);
+    let cursor = Math.ceil(floor / (30 * MIN)) * (30 * MIN);
+    const options: Date[] = [];
+    while (cursor <= endMs && options.length < 5) {
+      options.push(new Date(cursor));
+      cursor += 60 * MIN;
+    }
+    return options;
   }
 
   private async onChooseAppointment(
@@ -359,25 +471,42 @@ export class ConversationEngine {
       return;
     }
 
-    const { doctorId, patientName } = record.context;
+    const { doctorId, patientName, targetTimeIso } = record.context;
+    const target = targetTimeIso ? new Date(targetTimeIso) : null;
     try {
       const doctor = await this.repo.getDoctor(doctorId!);
       const result = await this.scheduling.joinQueue({
         doctorId: doctorId!,
-        date: this.clock.now(),
+        date: target ?? this.clock.now(),
         patientName: patientName ?? "Patient",
         patientPhone: record.phone,
+        ...(target ? { targetTime: target } : {}),
       });
-      await this.notifier?.notifyFront(doctorId!, toQueueDate(this.clock.now()));
-      await this.finish(
-        record,
-        t("queue_joined", lang, {
-          doctor: doctor?.name ?? "Doctor",
-          min: String(result.estimateMinMinutes),
-          max: String(result.estimateMaxMinutes),
-          arrival: istTime.format(result.suggestedArrival),
-        }),
+      await this.notifier?.notifyFront(
+        doctorId!,
+        toQueueDate(target ?? this.clock.now()),
       );
+      if (result.scheduled && result.aroundTime && result.comeBy) {
+        // Scheduled token: a window + come-by, never an exact minute.
+        await this.finish(
+          record,
+          t("queue_scheduled", lang, {
+            doctor: doctor?.name ?? "Doctor",
+            around: istTime.format(result.aroundTime),
+            comeBy: istTime.format(result.comeBy),
+          }),
+        );
+      } else {
+        await this.finish(
+          record,
+          t("queue_joined", lang, {
+            doctor: doctor?.name ?? "Doctor",
+            min: String(result.estimateMinMinutes),
+            max: String(result.estimateMaxMinutes),
+            arrival: istTime.format(result.suggestedArrival),
+          }),
+        );
+      }
     } catch (err) {
       await this.handleDomainError(record, err);
     }

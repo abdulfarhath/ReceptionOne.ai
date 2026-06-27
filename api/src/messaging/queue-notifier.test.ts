@@ -21,7 +21,13 @@ function setup() {
   });
   const channel = new MockChannelAdapter();
   const svc = new SchedulingService(repo, clock);
-  const notifier = new QueueNotifier({ repo, channel, slipMin: 20 });
+  const notifier = new QueueNotifier({
+    repo,
+    channel,
+    slipMin: 20,
+    scheduledLeadMin: 15,
+    clock,
+  });
   const join = (phone: string, isWalkIn = false) =>
     svc.joinQueue({ doctorId: "doc1", date: NOW, patientName: `P-${phone}`, patientPhone: phone, isWalkIn });
   return { repo, channel, svc, notifier, join };
@@ -62,5 +68,49 @@ describe("QueueNotifier", () => {
     await env.notifier.notifyFront("doc1", QDATE);
     slips = env.channel.outbox.filter((m) => /behind/i.test(m.text));
     expect(slips).toHaveLength(1);
+  });
+
+  it("fires the SCHEDULED_DUE nudge once when a scheduled token crosses its lead window", async () => {
+    // NOW = 06:00 UTC, lead 15 -> a token targeting 06:10 is active (06:10-15=05:55).
+    const consented = await env.repo.createPatient({
+      phone: "+919000000010",
+      name: "Sched",
+      consentAt: NOW,
+    });
+    await env.svc.joinQueue({
+      doctorId: "doc1",
+      date: NOW,
+      patientName: consented.name,
+      patientPhone: consented.phone,
+      targetTime: new Date("2026-06-24T06:10:00.000Z"),
+    });
+
+    await env.notifier.notifyFront("doc1", QDATE);
+    let due = env.channel.outbox.filter((m) => /head to the clinic|coming up/i.test(m.text));
+    expect(due).toHaveLength(1);
+    expect(due[0]?.to).toBe(consented.phone);
+
+    // Idempotent: a second pass does not re-send.
+    await env.notifier.notifyFront("doc1", QDATE);
+    due = env.channel.outbox.filter((m) => /head to the clinic|coming up/i.test(m.text));
+    expect(due).toHaveLength(1);
+  });
+
+  it("does not nudge a scheduled token that is still upcoming (before its lead window)", async () => {
+    const consented = await env.repo.createPatient({
+      phone: "+919000000011",
+      name: "Later",
+      consentAt: NOW,
+    });
+    await env.svc.joinQueue({
+      doctorId: "doc1",
+      date: new Date("2026-06-24T09:00:00.000Z"),
+      patientName: consented.name,
+      patientPhone: consented.phone,
+      targetTime: new Date("2026-06-24T09:00:00.000Z"), // activates 08:45 > NOW
+    });
+    await env.notifier.notifyFront("doc1", QDATE);
+    const due = env.channel.outbox.filter((m) => /head to the clinic|coming up/i.test(m.text));
+    expect(due).toHaveLength(0);
   });
 });

@@ -53,15 +53,15 @@ function StatCard({
 }) {
   return (
     <Card>
-      <CardContent className="flex items-center gap-3 p-3">
-        <div className="flex size-9 items-center justify-center rounded-md bg-muted text-muted-foreground">
+      <CardContent className="flex items-center gap-3 px-[15px] py-[13px]">
+        <div className="flex size-[38px] items-center justify-center rounded-[10px] bg-nav-active text-teal">
           {icon}
         </div>
         <div>
-          <div className="text-xl font-semibold tabular-nums leading-none">
-            {value}
+          <div className="font-display text-[22px] font-extrabold leading-none text-ink">
+            {value.toLocaleString()}
           </div>
-          <div className="mt-1 text-xs text-muted-foreground">{label}</div>
+          <div className="mt-1 text-[11.5px] text-faint">{label}</div>
         </div>
       </CardContent>
     </Card>
@@ -96,12 +96,14 @@ export function BroadcastsPage() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Broadcasts</h1>
-          <p className="text-muted-foreground">
-            Send announcements, camps, and reminders to all consented patients.
+          <h1 className="font-display text-[26px] font-extrabold tracking-tight text-ink">
+            Broadcasts
+          </h1>
+          <p className="mt-1 text-[13.5px] text-muted-foreground">
+            Announcements, camps and reminders — sent only to consented patients.
           </p>
         </div>
-        <Button onClick={() => setComposeOpen(true)}>
+        <Button variant="accent" onClick={() => setComposeOpen(true)}>
           <Plus className="size-4" aria-hidden />
           New broadcast
         </Button>
@@ -189,44 +191,47 @@ export function BroadcastsPage() {
           </Button>
         </EmptyState>
       ) : (
-        <div className="overflow-x-auto rounded-lg border">
+        <div className="overflow-x-auto rounded-xl border border-line bg-card">
           <table className="w-full text-sm">
-            <thead className="border-b bg-muted/40 text-left text-muted-foreground">
-              <tr>
-                <th className="px-3 py-2 font-medium">Broadcast</th>
-                <th className="px-3 py-2 font-medium">Category</th>
-                <th className="px-3 py-2 font-medium">Priority</th>
-                <th className="px-3 py-2 text-right font-medium">Reached</th>
-                <th className="px-3 py-2 font-medium">When</th>
+            <thead className="border-b border-line-soft bg-subtle text-left">
+              <tr className="font-mono text-[10px] font-bold uppercase tracking-[0.05em] text-faint">
+                <th className="px-4 py-[11px] font-bold">Broadcast</th>
+                <th className="px-4 py-[11px] font-bold">Category</th>
+                <th className="px-4 py-[11px] font-bold">Priority</th>
+                <th className="px-4 py-[11px] text-right font-bold">Reached</th>
+                <th className="px-4 py-[11px] font-bold">When</th>
               </tr>
             </thead>
             <tbody>
               {broadcasts.map((b) => (
-                <tr key={b.id} className="border-b align-top last:border-0">
-                  <td className="max-w-sm px-3 py-2.5">
+                <tr
+                  key={b.id}
+                  className="border-b border-line-soft align-top last:border-0 hover:bg-subtle"
+                >
+                  <td className="max-w-sm px-4 py-3">
                     <div className="flex items-center gap-2">
-                      <span className="font-medium">{b.title}</span>
+                      <span className="font-semibold text-ink">{b.title}</span>
                       <Badge variant={statusVariant(b.status)}>{b.status}</Badge>
                     </div>
                     <div className="truncate text-xs text-muted-foreground">
                       {b.body}
                     </div>
-                    <div className="mt-0.5 text-[11px] text-muted-foreground">
+                    <div className="mt-0.5 text-[11px] text-faint">
                       by {b.createdByName}
                     </div>
                   </td>
-                  <td className="px-3 py-2.5">
+                  <td className="px-4 py-3">
                     <Badge variant="outline">{categoryLabel(b.category)}</Badge>
                   </td>
-                  <td className="px-3 py-2.5">
+                  <td className="px-4 py-3">
                     <Badge variant={priorityVariant(b.priority)}>
                       {b.priority}
                     </Badge>
                   </td>
-                  <td className="px-3 py-2.5 text-right tabular-nums">
+                  <td className="px-4 py-3 text-right font-mono font-bold text-teal-deep tabular-nums">
                     {b.status === "SENT" ? b.recipientCount : "—"}
                   </td>
-                  <td className="whitespace-nowrap px-3 py-2.5 text-xs text-muted-foreground">
+                  <td className="whitespace-nowrap px-4 py-3 text-xs text-muted-foreground">
                     {whenLabel(b)}
                   </td>
                 </tr>

@@ -49,37 +49,42 @@ function Stat({
 }
 
 /** A dependency-free bar chart of tokens joined per day (done segment shaded). */
+const CHART_HEIGHT = 150; // px — the plot area the bars are scaled against
+
 function DemandChart({ perDay }: { perDay: DoctorDayDemand[] }) {
   const max = Math.max(1, ...perDay.map((d) => d.joined));
-  const pct = (n: number) => `${(n / max) * 100}%`;
+  // Pixel heights (percentages don't resolve inside an auto-height flex column).
+  const px = (n: number) => (Math.max(0, n) / max) * CHART_HEIGHT;
+  const hasData = perDay.some((d) => d.joined > 0);
 
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-4 text-xs text-muted-foreground">
         <span className="flex items-center gap-1.5">
-          <span className="size-2.5 rounded-sm bg-emerald-600" /> Done
+          <span className="size-2.5 rounded-sm bg-success" /> Done
         </span>
         <span className="flex items-center gap-1.5">
           <span className="size-2.5 rounded-sm bg-primary" /> Other (no-show / cancelled / active)
         </span>
       </div>
       <div className="overflow-x-auto">
-        <div className="flex h-40 min-w-[640px] items-end gap-1">
+        <div className="flex min-w-[640px] items-end gap-1">
           {perDay.map((d) => (
             <div key={d.date} className="flex flex-1 flex-col items-center gap-1">
               <div
-                className="flex w-full flex-1 flex-col justify-end overflow-hidden rounded-t"
+                className="flex w-full flex-col justify-end overflow-hidden rounded-t bg-muted/40"
+                style={{ height: CHART_HEIGHT }}
                 title={`${d.date}: ${d.joined} joined, ${d.done} done${
                   d.noShow ? `, ${d.noShow} no-show` : ""
                 }${d.cancelled ? `, ${d.cancelled} cancelled` : ""}`}
               >
                 <div
                   className="w-full bg-primary"
-                  style={{ height: pct(d.joined - d.done) }}
+                  style={{ height: px(d.joined - d.done) }}
                 />
                 <div
-                  className="w-full bg-emerald-600"
-                  style={{ height: pct(d.done) }}
+                  className="w-full bg-success"
+                  style={{ height: px(d.done) }}
                 />
               </div>
               <span className="text-[10px] tabular-nums text-muted-foreground">
@@ -89,6 +94,11 @@ function DemandChart({ perDay }: { perDay: DoctorDayDemand[] }) {
           ))}
         </div>
       </div>
+      {!hasData ? (
+        <p className="text-sm text-muted-foreground">
+          No tokens recorded for this month.
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -111,7 +121,7 @@ export function DoctorInsightsPage() {
   return (
     <div className="space-y-6">
       <Link
-        to="/doctors"
+        to="/app/doctors"
         className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="size-4" aria-hidden />
@@ -131,10 +141,10 @@ export function DoctorInsightsPage() {
           return (
             <>
               <div>
-                <h1 className="text-2xl font-semibold tracking-tight">
+                <h1 className="font-display text-[26px] font-extrabold tracking-tight text-ink">
                   {doctor.name}
                 </h1>
-                <p className="text-muted-foreground">
+                <p className="mt-1 text-[13.5px] text-muted-foreground">
                   {doctor.department} · demand &amp; session hours
                 </p>
               </div>
@@ -164,7 +174,9 @@ export function DoctorInsightsPage() {
 
               {/* Monthly demand */}
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <h2 className="text-lg font-semibold">Demand</h2>
+                <h2 className="font-display text-lg font-extrabold text-ink">
+                  Demand
+                </h2>
                 <div className="flex items-center gap-2">
                   <Button
                     variant="outline"

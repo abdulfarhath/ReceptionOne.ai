@@ -1,11 +1,11 @@
 import type { Analytics } from "@/lib/schemas";
 import { hourLabel, WEEKDAY_LABELS, WEEKDAY_ORDER } from "./theme";
 
-// Blue scale matched to CHART.booked (#2563eb = rgb(37,99,235)).
+// Teal scale matched to CHART.booked (#0E7C6B = rgb(14,124,107)).
 function cellColor(bookings: number, max: number): string {
   if (bookings <= 0 || max <= 0) return "transparent";
   const alpha = 0.12 + 0.88 * (bookings / max);
-  return `rgba(37, 99, 235, ${alpha.toFixed(3)})`;
+  return `rgba(14, 124, 107, ${alpha.toFixed(3)})`;
 }
 
 export function DemandHeatmap({ heatmap }: { heatmap: Analytics["heatmap"] }) {
@@ -46,7 +46,7 @@ export function DemandHeatmap({ heatmap }: { heatmap: Analytics["heatmap"] }) {
                     className="flex h-6 items-center justify-center rounded-sm border border-border/50 text-[10px] tabular-nums"
                     style={{
                       backgroundColor: cellColor(n, max),
-                      color: n / Math.max(max, 1) > 0.55 ? "#fff" : "#334155",
+                      color: n / Math.max(max, 1) > 0.55 ? "#fff" : "#0b2722",
                     }}
                     title={`${WEEKDAY_LABELS[wd]} ${hourLabel(hour)} — ${n} booking${
                       n === 1 ? "" : "s"
@@ -67,7 +67,7 @@ export function DemandHeatmap({ heatmap }: { heatmap: Analytics["heatmap"] }) {
         <div
           className="h-2.5 w-28 rounded-sm border border-border/50"
           style={{
-            background: "linear-gradient(to right, rgba(37,99,235,0.12), rgba(37,99,235,1))",
+            background: "linear-gradient(to right, rgba(14,124,107,0.12), rgba(14,124,107,1))",
           }}
           aria-hidden
         />

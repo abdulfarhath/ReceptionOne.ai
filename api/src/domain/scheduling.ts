@@ -13,13 +13,17 @@ import { NotFoundError } from "./errors.js";
 import {
   activeOrder,
   assertTransition,
+  DEFAULT_SCHEDULED_LEAD_MIN,
   estimateRange,
   estimateWaitMinutes,
+  isScheduled,
   positionOf,
   suggestedArrival,
+  upcomingScheduled,
 } from "./queue.js";
 
 const MINUTE_MS = 60_000;
+const DEFAULT_ARRIVAL_BUFFER_MIN = 10;
 
 /** Injectable wall clock so time-dependent logic stays testable. */
 export interface Clock {
@@ -56,9 +60,14 @@ export interface JoinQueueInput {
   isWalkIn?: boolean;
   /** Why priority was granted — captured into the JOINED event metadata. */
   priorityReason?: string;
+  /**
+   * "Come at my own time": preferred target (UTC). Omitted/null = immediate
+   * token (come now). When set, the booking starts WAITING as a scheduled token.
+   */
+  targetTime?: Date | null;
 }
 
-/** Patient-facing join result: an honest range + arrival, never token/position. */
+/** Patient-facing join result: an honest range/window + arrival, never token/position. */
 export interface JoinResult {
   bookingId: string;
   estimateMinMinutes: number;
@@ -66,6 +75,26 @@ export interface JoinResult {
   suggestedArrival: Date;
   /** Set when the doctor's daily priority soft-cap is exceeded (advisory only). */
   priorityWarning?: string;
+  /** True for a scheduled ("come at my own time") token. */
+  scheduled?: boolean;
+  /** Scheduled only: the target time and the suggested "come by" time. */
+  aroundTime?: Date;
+  comeBy?: Date;
+}
+
+/**
+ * A scheduled-token estimate: a window around the chosen target — never an exact
+ * minute or a guaranteed slot. `alreadyScheduledInWindow` counts other scheduled
+ * tokens that chose the same hour; `likelySeenBy` is a soft hint only when that
+ * hour is oversubscribed. Never hard-blocks.
+ */
+export interface ScheduledQuoteResult {
+  aroundTime: Date;
+  windowMinMinutes: number;
+  windowMaxMinutes: number;
+  comeBy: Date;
+  alreadyScheduledInWindow: number;
+  likelySeenBy?: Date;
 }
 
 export type ReinstateMode = "back" | "priority";
@@ -73,6 +102,10 @@ export type ReinstateMode = "back" | "priority";
 export interface SchedulingOptions {
   /** Soft cap on priority bookings per doctor per day (warning, not a block). */
   maxPriorityPerDay?: number;
+  /** Minutes before targetTime a scheduled token joins the live line (default 15). */
+  scheduledLeadMin?: number;
+  /** Minutes before targetTime to suggest the patient arrive (default 10). */
+  arrivalBufferMin?: number;
 }
 
 /** A queue entry enriched for the board / a patient status query. */
@@ -87,12 +120,15 @@ export interface QueueEntryView {
   patientPhone: string;
   position: number;
   estimateWaitMinutes: number;
+  /** Scheduled-token target (UTC); null for immediate tokens. */
+  targetTime: Date | null;
   arrivedAt: Date | null;
   startedAt: Date | null;
   doneAt: Date | null;
 }
 
 export interface QueueBoard {
+  upcoming: QueueEntryView[]; // scheduled tokens not yet activated (have targetTime)
   traveling: QueueEntryView[]; // WAITING — not yet checked in
   waitingHere: QueueEntryView[]; // ARRIVED — checked in, waiting
   inProgress: QueueEntryView[];
@@ -110,6 +146,8 @@ export interface StatusResult {
 
 export class SchedulingService {
   private readonly maxPriorityPerDay: number | undefined;
+  private readonly scheduledLeadMin: number;
+  private readonly arrivalBufferMin: number;
 
   constructor(
     private readonly repo: Repository,
@@ -117,6 +155,13 @@ export class SchedulingService {
     options: SchedulingOptions = {},
   ) {
     this.maxPriorityPerDay = options.maxPriorityPerDay;
+    this.scheduledLeadMin = options.scheduledLeadMin ?? DEFAULT_SCHEDULED_LEAD_MIN;
+    this.arrivalBufferMin = options.arrivalBufferMin ?? DEFAULT_ARRIVAL_BUFFER_MIN;
+  }
+
+  /** Order options that exclude not-yet-active scheduled tokens at `now`. */
+  private orderOpts() {
+    return { now: this.clock.now(), scheduledLeadMin: this.scheduledLeadMin };
   }
 
   /** Estimate for a NEW (non-priority) booking without creating it. */
@@ -127,6 +172,7 @@ export class SchedulingService {
     const queueDate = toQueueDate(date);
     const order = activeOrder(
       await this.repo.listQueueEntries(doctorId, queueDate),
+      this.orderOpts(),
     );
     const peopleAhead = order.length; // a new joiner goes to the back
     const estimate = estimateWaitMinutes(peopleAhead, doctor.avgConsultMinutes);
@@ -155,7 +201,10 @@ export class SchedulingService {
       input.patientPhone,
       input.patientName,
     );
-    const isWalkIn = input.isWalkIn ?? false;
+    // A scheduled token is never also a walk-in: it joins WAITING for its target.
+    const targetTime = input.targetTime ?? null;
+    const isScheduledJoin = targetTime !== null;
+    const isWalkIn = isScheduledJoin ? false : (input.isWalkIn ?? false);
     const isPriority = input.isPriority ?? false;
     const now = this.clock.now();
 
@@ -170,8 +219,9 @@ export class SchedulingService {
         isPriority,
         status: isWalkIn ? AppointmentStatus.ARRIVED : AppointmentStatus.WAITING,
         arrivedAt: isWalkIn ? now : null,
+        targetTime,
       });
-      // Capture the priority reason in the audit trail when priority is granted.
+      // Capture the priority reason / scheduled target in the audit trail.
       await tx.appendEvent({
         appointmentId: entry.id,
         type: AppointmentEventType.JOINED,
@@ -179,6 +229,7 @@ export class SchedulingService {
           token,
           isWalkIn,
           isPriority,
+          ...(isScheduledJoin ? { scheduled: true, targetTime: targetTime.toISOString() } : {}),
           ...(isPriority && input.priorityReason
             ? { priorityReason: input.priorityReason }
             : {}),
@@ -186,7 +237,42 @@ export class SchedulingService {
       });
 
       const allEntries = await tx.listQueueEntries(input.doctorId, queueDate);
-      const order = activeOrder(allEntries);
+
+      // Soft priority cap: advise, never block.
+      let priorityWarning: string | undefined;
+      if (isPriority && this.maxPriorityPerDay !== undefined) {
+        const priorityCount = allEntries.filter((e) => e.isPriority).length;
+        if (priorityCount > this.maxPriorityPerDay) {
+          priorityWarning = `Priority cap of ${this.maxPriorityPerDay} exceeded for this doctor today (${priorityCount} priority bookings).`;
+        }
+      }
+
+      // Scheduled token: reply a WINDOW around the target + a come-by time, never
+      // a precise wait or position (it isn't in the active line yet).
+      if (isScheduledJoin) {
+        const sq = this.computeScheduledQuote(
+          doctor.avgConsultMinutes,
+          targetTime,
+          allEntries,
+          entry.id,
+        );
+        await tx.updateAppointment(entry.id, {
+          lastNotifiedMaxMinutes: sq.windowMaxMinutes,
+        });
+        return {
+          bookingId: entry.id,
+          estimateMinMinutes: sq.windowMinMinutes,
+          estimateMaxMinutes: sq.windowMaxMinutes,
+          suggestedArrival: sq.comeBy,
+          scheduled: true,
+          aroundTime: sq.aroundTime,
+          comeBy: sq.comeBy,
+          ...(priorityWarning ? { priorityWarning } : {}),
+        };
+      }
+
+      // Immediate token: an honest min–max range + suggested arrival (unchanged).
+      const order = activeOrder(allEntries, this.orderOpts());
       const peopleAhead = Math.max(0, positionOf(entry, order) - 1);
       const estimate = estimateWaitMinutes(peopleAhead, doctor.avgConsultMinutes);
       const range = estimateRange(peopleAhead, doctor.avgConsultMinutes);
@@ -201,15 +287,6 @@ export class SchedulingService {
         lastNotifiedMaxMinutes: range.maxMinutes,
       });
 
-      // Soft priority cap: advise, never block.
-      let priorityWarning: string | undefined;
-      if (isPriority && this.maxPriorityPerDay !== undefined) {
-        const priorityCount = allEntries.filter((e) => e.isPriority).length;
-        if (priorityCount > this.maxPriorityPerDay) {
-          priorityWarning = `Priority cap of ${this.maxPriorityPerDay} exceeded for this doctor today (${priorityCount} priority bookings).`;
-        }
-      }
-
       return {
         bookingId: entry.id,
         estimateMinMinutes: range.minMinutes,
@@ -218,6 +295,66 @@ export class SchedulingService {
         ...(priorityWarning ? { priorityWarning } : {}),
       };
     });
+  }
+
+  /**
+   * A window estimate for a SCHEDULED token at `targetTime` — a band around the
+   * target plus a come-by time, never an exact minute or a guaranteed slot.
+   * Counts other scheduled tokens in the same hour and, if that hour is
+   * oversubscribed, adds a soft `likelySeenBy`. Never hard-blocks.
+   */
+  async scheduledQuote(
+    doctorId: string,
+    targetTime: Date,
+  ): Promise<ScheduledQuoteResult> {
+    const doctor = await this.repo.getDoctor(doctorId);
+    if (!doctor) throw new NotFoundError(`Doctor ${doctorId} not found`);
+    const queueDate = toQueueDate(targetTime);
+    const entries = await this.repo.listQueueEntries(doctorId, queueDate);
+    return this.computeScheduledQuote(doctor.avgConsultMinutes, targetTime, entries);
+  }
+
+  /** Pure window maths shared by scheduledQuote + a scheduled joinQueue reply. */
+  private computeScheduledQuote(
+    avgConsultMinutes: number,
+    targetTime: Date,
+    entries: Appointment[],
+    excludeId?: string,
+  ): ScheduledQuoteResult {
+    const hourStart = Math.floor(targetTime.getTime() / (60 * MINUTE_MS)) * 60 * MINUTE_MS;
+    const hourEnd = hourStart + 60 * MINUTE_MS;
+    const alreadyScheduledInWindow = entries.filter(
+      (e) =>
+        e.id !== excludeId &&
+        isScheduled(e) &&
+        e.status !== AppointmentStatus.DONE &&
+        e.status !== AppointmentStatus.NO_SHOW &&
+        e.status !== AppointmentStatus.CANCELLED &&
+        e.targetTime!.getTime() >= hourStart &&
+        e.targetTime!.getTime() < hourEnd,
+    ).length;
+
+    // Honest band around the target; widens a little as the hour fills up.
+    const windowMinMinutes = 0;
+    const windowMaxMinutes =
+      this.arrivalBufferMin + avgConsultMinutes + alreadyScheduledInWindow * avgConsultMinutes;
+    const comeBy = new Date(targetTime.getTime() - this.arrivalBufferMin * MINUTE_MS);
+
+    // Oversubscribed = the chosen hour already holds more than an hour of work.
+    const oversubscribed = (alreadyScheduledInWindow + 1) * avgConsultMinutes > 60;
+    const result: ScheduledQuoteResult = {
+      aroundTime: targetTime,
+      windowMinMinutes,
+      windowMaxMinutes,
+      comeBy,
+      alreadyScheduledInWindow,
+    };
+    if (oversubscribed) {
+      result.likelySeenBy = new Date(
+        targetTime.getTime() + alreadyScheduledInWindow * avgConsultMinutes * MINUTE_MS,
+      );
+    }
+    return result;
   }
 
   checkIn(id: string): Promise<Appointment> {
@@ -267,7 +404,12 @@ export class SchedulingService {
   async getQueue(doctorId: string, date: Date): Promise<QueueBoard> {
     const queueDate = toQueueDate(date);
     const entries = await this.repo.listQueueEntries(doctorId, queueDate);
-    const order = activeOrder(entries);
+    const order = activeOrder(entries, this.orderOpts());
+    const upcoming = upcomingScheduled(
+      entries,
+      this.clock.now(),
+      this.scheduledLeadMin,
+    );
     const avg = (await this.repo.getDoctor(doctorId))?.avgConsultMinutes ?? 15;
     const patients = await this.patientMap(entries);
 
@@ -287,6 +429,7 @@ export class SchedulingService {
         patientPhone: patient?.phone ?? "",
         position,
         estimateWaitMinutes: estimate,
+        targetTime: e.targetTime,
         arrivedAt: e.arrivedAt,
         startedAt: e.startedAt,
         doneAt: e.doneAt,
@@ -299,6 +442,7 @@ export class SchedulingService {
     const orderedActive = order.map(toView);
 
     return {
+      upcoming: upcoming.map(toView),
       traveling: orderedActive.filter((v) => v.status === AppointmentStatus.WAITING),
       waitingHere: orderedActive.filter(
         (v) => v.status === AppointmentStatus.ARRIVED,
@@ -319,6 +463,7 @@ export class SchedulingService {
     const avg = doctor?.avgConsultMinutes ?? 15;
     const order = activeOrder(
       await this.repo.listQueueEntries(entry.doctorId, entry.queueDate),
+      this.orderOpts(),
     );
     const position = positionOf(entry, order);
     const peopleAhead = position > 0 ? position - 1 : 0;
@@ -372,23 +517,32 @@ export class SchedulingService {
   }
 
   /**
-   * Flip any still-WAITING booking to NO_SHOW once a doctor's session has ended
-   * plus `graceMin`. Only WAITING entries are touched (people who never showed),
-   * so it's idempotent and skips ARRIVED / DONE / CANCELLED. Returns the count.
+   * Flip still-WAITING bookings to NO_SHOW. Two rules, both with `graceMin`:
+   *   - a SCHEDULED token whose own targetTime + grace has passed (its window is
+   *     gone and they never arrived), and
+   *   - any token once the doctor's session end + grace has passed.
+   * Only WAITING entries are touched, so it's idempotent and skips
+   * ARRIVED / DONE / CANCELLED. Returns the count swept.
    */
   async sweepNoShows(graceMin: number): Promise<{ swept: number }> {
     const now = this.clock.now();
+    const nowMs = now.getTime();
+    const graceMs = graceMin * MINUTE_MS;
     const queueDate = toQueueDate(now);
     const doctors = await this.repo.listDoctors();
     let swept = 0;
     for (const doctor of doctors) {
       const sessionEnd = await this.sessionEnd(doctor.id, queueDate);
-      if (sessionEnd === null) continue; // no session today
-      if (now.getTime() < sessionEnd.getTime() + graceMin * MINUTE_MS) continue;
+      const sessionOver =
+        sessionEnd !== null && nowMs >= sessionEnd.getTime() + graceMs;
 
       const entries = await this.repo.listQueueEntries(doctor.id, queueDate);
       for (const entry of entries) {
-        if (entry.status === AppointmentStatus.WAITING) {
+        if (entry.status !== AppointmentStatus.WAITING) continue;
+        const scheduledOver =
+          entry.targetTime !== null &&
+          nowMs >= entry.targetTime.getTime() + graceMs;
+        if (scheduledOver || sessionOver) {
           await this.markNoShow(entry.id);
           swept++;
         }

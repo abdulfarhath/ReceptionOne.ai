@@ -16,6 +16,8 @@ function Select({ className, children, ...props }: React.ComponentProps<"select"
           "h-9 w-full appearance-none rounded-md border border-input bg-transparent px-3 pr-8 text-sm shadow-xs outline-none transition-[color,box-shadow]",
           "focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50",
           "disabled:cursor-not-allowed disabled:opacity-50",
+          // Native option popup: keep it on theme in dark mode.
+          "[&>option]:bg-popover [&>option]:text-popover-foreground",
           className,
         )}
         {...props}

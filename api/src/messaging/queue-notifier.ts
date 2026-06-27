@@ -6,7 +6,15 @@
 //      vs what they were last told ("running a little behind").
 // Never throws — queue operations must not fail because a notification did.
 
-import { activeOrder, estimateRange, positionOf } from "../domain/queue.js";
+import {
+  activeOrder,
+  DEFAULT_SCHEDULED_LEAD_MIN,
+  estimateRange,
+  isScheduled,
+  isUpcoming,
+  positionOf,
+} from "../domain/queue.js";
+import type { Clock } from "../domain/scheduling.js";
 import { AppointmentStatus } from "../domain/types.js";
 import type { Repository } from "../repository/repository.js";
 import type { ChannelAdapter } from "./channel.js";
@@ -14,7 +22,10 @@ import type { Language } from "./conversation.js";
 import { t } from "./i18n.js";
 
 const YOURE_NEXT = "YOURE_NEXT";
+const SCHEDULED_DUE = "SCHEDULED_DUE";
 const DEFAULT_SLIP_MIN = 20;
+
+const systemClock: Clock = { now: () => new Date() };
 
 const ACTIVE_WAITING: ReadonlySet<AppointmentStatus> = new Set([
   AppointmentStatus.WAITING,
@@ -26,6 +37,9 @@ export interface QueueNotifierDeps {
   channel: ChannelAdapter;
   /** Re-notify once a patient's max wait grows by more than this vs last told. */
   slipMin?: number;
+  /** Minutes before targetTime a scheduled token activates (default 15). */
+  scheduledLeadMin?: number;
+  clock?: Clock;
   onError?: (err: unknown) => void;
 }
 
@@ -33,12 +47,16 @@ export class QueueNotifier {
   private readonly repo: Repository;
   private readonly channel: ChannelAdapter;
   private readonly slipMin: number;
+  private readonly scheduledLeadMin: number;
+  private readonly clock: Clock;
   private readonly onError: ((err: unknown) => void) | undefined;
 
   constructor(deps: QueueNotifierDeps) {
     this.repo = deps.repo;
     this.channel = deps.channel;
     this.slipMin = deps.slipMin ?? DEFAULT_SLIP_MIN;
+    this.scheduledLeadMin = deps.scheduledLeadMin ?? DEFAULT_SCHEDULED_LEAD_MIN;
+    this.clock = deps.clock ?? systemClock;
     this.onError = deps.onError;
   }
 
@@ -48,9 +66,28 @@ export class QueueNotifier {
       const doctor = await this.repo.getDoctor(doctorId);
       const avg = doctor?.avgConsultMinutes ?? 15;
       const doctorName = doctor?.name ?? "the doctor";
-      const order = activeOrder(
-        await this.repo.listQueueEntries(doctorId, queueDate),
-      );
+      const now = this.clock.now();
+      const allEntries = await this.repo.listQueueEntries(doctorId, queueDate);
+      const order = activeOrder(allEntries, {
+        now,
+        scheduledLeadMin: this.scheduledLeadMin,
+      });
+
+      // 0) Scheduled-due — a scheduled token has crossed into its lead window
+      //    (now active but not arrived). Nudge them to head over, once.
+      for (const entry of allEntries) {
+        if (!isScheduled(entry)) continue;
+        if (entry.status !== AppointmentStatus.WAITING) continue;
+        if (isUpcoming(entry, now, this.scheduledLeadMin)) continue; // not due yet
+        const patient = await this.repo.getPatient(entry.patientId);
+        if (!patient?.consentAt) continue;
+        if (await this.repo.claimNotification(entry.id, SCHEDULED_DUE)) {
+          await this.channel.sendText(
+            patient.phone,
+            t("queue_scheduled_due", langOf(patient), { doctor: doctorName }),
+          );
+        }
+      }
 
       // 1) "You're next" — the next person up (ignoring whoever is being seen).
       const next = order.find((e) => ACTIVE_WAITING.has(e.status));

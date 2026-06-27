@@ -19,6 +19,7 @@ function entry(
     isWalkIn: false,
     isPriority: false,
     onHold: false,
+    targetTime: null,
     arrivedAt: null,
     startedAt: opts.startedAt ? new Date(opts.startedAt) : null,
     doneAt: opts.doneAt ? new Date(opts.doneAt) : null,

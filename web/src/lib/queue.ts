@@ -18,24 +18,41 @@ export type BadgeVariant =
   | "success"
   | "muted"
   | "destructive"
-  | "outline";
+  | "outline"
+  | "traveling"
+  | "arrived"
+  | "inProgress"
+  | "done"
+  | "noShow"
+  | "priority";
 
+/** Maps a queue status to its brand status-pill variant. */
 export function statusVariant(s: AppointmentStatus): BadgeVariant {
   switch (s) {
     case "WAITING":
-      return "secondary";
+      return "traveling";
     case "ARRIVED":
-      return "default";
+      return "arrived";
     case "IN_PROGRESS":
-      return "default";
+      return "inProgress";
     case "DONE":
-      return "success";
+      return "done";
     case "NO_SHOW":
-      return "destructive";
+      return "noShow";
     case "CANCELLED":
       return "muted";
   }
 }
+
+/** Short, human queue-status labels matching the redesign's column names. */
+export const STATUS_PILL_LABEL: Record<AppointmentStatus, string> = {
+  WAITING: "Traveling",
+  ARRIVED: "Waiting here",
+  IN_PROGRESS: "With doctor",
+  DONE: "Done",
+  NO_SHOW: "No-show",
+  CANCELLED: "Cancelled",
+};
 
 /** "~10 min" wait label. */
 export function waitLabel(minutes: number): string {

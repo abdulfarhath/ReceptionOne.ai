@@ -17,6 +17,7 @@ import {
   queueBoardSchema,
   queueEntrySchema,
   quoteResultSchema,
+  scheduledQuoteResultSchema,
   staffProfileSchema,
   type Analytics,
   type Availability,
@@ -34,6 +35,7 @@ import {
   type QueueBoard,
   type QueueEntry,
   type QuoteResult,
+  type ScheduledQuoteResult,
   type StaffProfile,
 } from "./schemas";
 
@@ -236,6 +238,18 @@ export function quoteQueue(doctorId: string, date?: string): Promise<QuoteResult
   });
 }
 
+/** Window estimate for a "come at my own time" (scheduled) token. */
+export function scheduledQuote(
+  doctorId: string,
+  targetTime: string,
+): Promise<ScheduledQuoteResult> {
+  return request(
+    `/api/doctors/${doctorId}/scheduled-quote`,
+    scheduledQuoteResultSchema,
+    { query: { targetTime } },
+  );
+}
+
 export function joinQueue(input: {
   doctorId: string;
   patientName: string;
@@ -244,6 +258,8 @@ export function joinQueue(input: {
   isPriority?: boolean;
   isWalkIn?: boolean;
   priorityReason?: string;
+  /** "Come at my own time": ISO datetime (UTC). Omit for an immediate token. */
+  targetTime?: string;
 }): Promise<JoinResult> {
   return request("/api/bookings", joinResultSchema, {
     method: "POST",
